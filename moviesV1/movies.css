@@ -3,7 +3,7 @@
 }
 
 body{
-    background-color: #131720;
+    background-color: #d8dce6;
     font-family: sans-serif;
 }
 
@@ -51,8 +51,8 @@ input{
 }
 
 .thumbnail{
-    height: 350px;
-    width: 300px;
+    height: 80%;
+    width: 80%;
     border-radius: 19px;
 }
 
