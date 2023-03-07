@@ -25,6 +25,7 @@
     width: 400px;
     border-radius: 50%;
     background: linear-gradient(90deg, #1CB5E0 0%, #000851 100%);
+    animation: upDown 5s infinite ease-in-out;
 }
 
 .container::before {
@@ -36,6 +37,16 @@
     width: 400px;
     border-radius: 50%;
     background: linear-gradient(90deg, #FDBB2D 0%, #3A1C71 100%);
+    animation: upDown 5s 2.5s infinite ease-in-out;
+}
+
+@keyframes upDown {
+    0%, 100%{
+        transform: translateY(0);
+    }
+    55%{
+        transform: translateY(-40px);
+    }
 }
 
 .display-box {
@@ -52,7 +63,7 @@
     backdrop-filter: blur(30px);
     color: white;
     font-weight: bold;
-    font-size: 70px;
+    font-size: 75px;
     padding: 20px;
     box-shadow: -3px -5px 15px rgba(255, 255, 255, 0.2), 3px 5px 15px rgba(0, 0, 0, 0.3);
 }
