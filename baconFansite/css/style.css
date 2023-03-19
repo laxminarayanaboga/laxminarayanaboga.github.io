@@ -1,0 +1,99 @@
+h1 {
+    color: red;
+    font-size: 100px;
+}
+
+img.braccoli {
+    background-color: orange;
+
+
+}
+
+img.carrot {
+    background-color: green;
+}
+
+
+#heading {
+    color: green;
+}
+
+.circular {
+    border-radius: 10%;
+}
+
+img:hover {
+    background-color: cadetblue;
+}
+
+.red-relative-position{
+    width: 200px;
+    height: 200px;
+    background-color: red;
+    display: inline-block;
+    position: relative;
+    left: 200px;
+}
+
+.blue-relative-position{
+    width: 200px;
+    height: 200px;
+    background-color: blue;
+    display: inline-block;
+    position: relative;
+    left: 200px;
+}
+
+.green-relative-position{
+    width: 200px;
+    height: 200px;
+    background-color: green;
+    display: inline-block;
+    position: relative;
+    right: 405px;
+}
+
+.container{
+    position: relative;
+    background-color: gray;
+    width: 600px;
+    height: 600px;
+}
+
+.red-absolute-position{
+    width: 200px;
+    height: 200px;
+    background-color: red;
+    position: absolute;
+    top: 400px;
+    left: 400px
+   
+}
+
+.blue-absolute-position{
+    width: 200px;
+    height: 200px;
+    background-color: blue;
+    position: absolute;
+    top: 200px;
+    left: 200px
+    
+}
+
+.yellow-absolute-position{
+    width: 200px;
+    height: 200px;
+    background-color: yellow;
+    position: absolute;
+    top: 0px;
+    left: 0px;
+}
+
+.red-fixed-position{
+    color: white;
+    background-color: red;
+    width: 200px;
+    height: 200px;
+    position: fixed;
+    top: 0px;
+}
