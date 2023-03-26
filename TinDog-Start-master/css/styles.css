@@ -132,3 +132,41 @@ p {
 .pricing-column {
     padding: 3% 2%;
 }
+
+/* CTA section*/
+#cta {
+    background-color: #ff4c68;
+    color: white;
+    text-align: center;
+    padding: 7% 15%;
+}
+
+.cta-heading {
+    font-family: 'Montserrat-Black', sans-serif;
+    font-size: 3.5rem;
+    line-height: 1.5;
+    font-weight: 900;
+}
+
+/* Footer */
+#footer {
+    padding: 7% 15%;
+    text-align: center;
+    background-color: white;
+}
+
+#footer .footer-icon {
+    padding: 20px 10px;
+}
+
+/* media queries */
+@media (max-width:990px) {
+    #title {
+        text-align: center;
+    }
+
+    .title-image {
+        position: static;
+        transform: rotate(0);
+    }
+}
