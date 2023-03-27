@@ -1,0 +1,16 @@
+.ditial-time-container{
+    width: 100%;
+    height: 300px;
+    background-color: #282828;
+    font-family: "Roboto";
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ditial-time-container h1{
+    color: white;
+    font-size: 100px;
+    font-weight: 300;
+}
+
