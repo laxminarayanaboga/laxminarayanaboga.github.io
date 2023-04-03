@@ -1,4 +1,30 @@
-div.myLinks{
-    font-size: 45px;
-    color: black;
+body {
+    /* background-color: #252525; */
+    /* color: white; */
+}
+
+.container {
+    display: flex;
+    /* align-items: center; */
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 5px
+}
+
+.container div {
+    padding: 10px;
+    border: 1px #ccc solid;
+}
+
+.container-box{
+    /* flex: 1 1 130px; */
+
+}
+
+.container-my-apps{
+   padding: 15px;
+}
+
+.my-apps-container-box{
+    padding-bottom: 15px;
 }
