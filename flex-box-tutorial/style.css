@@ -15,7 +15,9 @@ body {
 }
 
 
-.container-1 div, .container-2 div, .container-3 div {
+.container-1 div,
+.container-2 div,
+.container-3 div {
     border: 1px #ccc solid;
     padding: 10px;
     margin: 5px;
@@ -50,12 +52,15 @@ body {
     flex-basis: 25%;
 }
 
-.container-3{
+.container-3 {
     display: flex;
     flex-wrap: wrap;
     /* justify-content: space-between; */
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
 }
 
 .container-3-box {
-    flex-basis: 15%;
+    /* flex-basis: 15%; */
 }
