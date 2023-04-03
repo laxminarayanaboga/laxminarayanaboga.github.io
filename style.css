@@ -9,3 +9,17 @@ body {
 .my-apps-container-box {
     padding-bottom: 15px;
 }
+
+.footer {
+    background-color: black;
+    color: white;
+    text-align: center;
+    padding: 20px 0px 10px 0px;
+}
+
+
+#footer .footer-icon {
+    padding: 20px 10px;
+    text-decoration: none;
+    color: white;
+}
