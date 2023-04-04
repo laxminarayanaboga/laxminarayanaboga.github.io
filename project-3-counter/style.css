@@ -6,10 +6,9 @@ body {
 }
 
 .container {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
+    display: grid;
+    align-items: center;
+    justify-content: center;
  
 }
 
@@ -20,9 +19,7 @@ body {
 }
 
 .counter-box{
-    text-align: center;
     border: 0.25rem solid black;
-    height: 20rem;
 }
 
 .counter-number{
