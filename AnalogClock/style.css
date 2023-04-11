@@ -70,7 +70,17 @@ body {
     z-index: 2;
 }
 
+
 .second::before {
+    content: "";
+    height: 1.5rem;
+    width: 0.1rem;
+    background: var(--clr-red);
+    position: absolute;
+    top: 100%;
+  }
+  
+  .second::after {
     content: "";
     height: 1.5rem;
     width: 0.3rem;
@@ -78,7 +88,7 @@ body {
     position: absolute;
     top: 120%;
     transform: translateX(-35%);
-}
+  }
 
 .minute {
     height: var(--min-hand);
