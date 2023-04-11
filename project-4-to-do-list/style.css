@@ -14,50 +14,6 @@ body {
     font-size: 4rem;
 }
 
-/* 
-.to-do-container{
-    margin: 5% 15%;
-}
-
-.grid-container{
-    display: grid;
-    justify-content: stretch;
-    align-items: stretch;
-  
-}
-
-.grid-item-input{
-    grid-column: 1 / span 6;
-    grid-row: 1;
-}
-
-.grid-item-button{
-    grid-column: 7 / span 1;
-    grid-row: 1;
-}
-
-.grid-item{
-    padding: 14px;
-    margin: 20px 5px;
-    border: 1px solid black;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 1.5rem;
-}
-
-.btn {
-    font-size: 1rem;
-}
-
-.btn-add{
-    background-color: #159895;
-}
-
-.btn-remove{
-    background-color: #B46060;
-} */
-
-
 .grid-container {
     display: grid;
     gap: 10px;
