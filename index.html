@@ -1,274 +1,250 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
-    <title>Hello World</title>
-    <link rel="stylesheet" href="style.css">
-
-    <!-- CSS stylesheets -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet"
-        integrity="sha384-GLhlTQ8iRABdZLl6O3oVMWSktQOp6b7In1Zl3/Jr59b6EGGoI1aFkw7cmDA6j6gD" crossorigin="anonymous">
-
-    <!-- Boorstrap Scripts -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"
-        integrity="sha384-w76AqPfDkMBDXo30jS1Sgez6pr3x5MlQ1ZAGC+nuZB+EYdgRZgiwxhTBTkF7CXvN"
-        crossorigin="anonymous"></script>
-
-    <!-- Font Awesome -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Laxminarayana Boga — Lead Software Engineer with 10+ years in test automation, full-stack development, and SaaS products. Based in London.">
+    <meta property="og:title" content="Laxminarayana Boga — Software Engineer">
+    <meta property="og:description" content="Lead Software Engineer with 10+ years across quality engineering and full-stack development. Currently at Cognizant, London.">
+    <meta property="og:type" content="website">
+    <title>Laxminarayana Boga — Software Engineer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://kit.fontawesome.com/e8e3708268.js" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
 
-    <nav class="navbar sticky-top navbar-expand-lg navbar-dark bg-dark">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="#">Laxminarayana Boga</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNavAltMarkup"
-                aria-controls="navbarNavAltMarkup" aria-expanded="false" aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon"></span>
+    <nav class="nav" id="nav">
+        <div class="nav-container">
+            <a href="#hero" class="nav-logo">LB</a>
+            <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation">
+                <span></span><span></span><span></span>
             </button>
-            <div class="collapse navbar-collapse" id="navbarNavAltMarkup">
-                <div class="navbar-nav">
-                    <a class="nav-link active" aria-current="page" href="#profile">Profile</a>
-                    <a class="nav-link" href="#apps">Apps</a>
-                    <a class="nav-link" href="#animations" tabindex="-1" aria-disabled="true">Css Animations</a>
-                </div>
-            </div>
+            <ul class="nav-links" id="navLinks">
+                <li><a href="#about">About</a></li>
+                <li><a href="#experience">Experience</a></li>
+                <li><a href="#skills">Skills</a></li>
+                <li><a href="#projects">Projects</a></li>
+                <li><a href="#contact">Contact</a></li>
+            </ul>
         </div>
     </nav>
 
-    <!-- <h1>Laxminarayana Boga</h1> -->
-
-
-
-    <div class="container-fluid">
-        <div class="row row-cols-lg-3 row-cols-md-2 row-cols-sm-1 container-my-apps" id="profile">
-
-            <div class="col my-apps-container-box">
-                <div class="card border-success">
-                    <h5 class="card-header text-success">My Profile v2</h5>
-                    <div class="card-body text-success">
-                        <h5 class="card-title">Laxminarayana Boga</h5>
-                        <p class="card-text">Software Engineer | Lead Quality Engineer | Full Stack Developer | FrontEnd
-                            Engineer |
-                            Boorstrap | HTML-CSS-JS | JavaScript | NodeJS | MongoDB | Selenium | WebDriverIO</p>
-                        <a href="myProfileV2/index.html" class="btn btn-success" target="_blank">My Profile</a>
-                    </div>
+    <section class="hero" id="hero">
+        <div class="hero-container">
+            <div class="hero-text">
+                <p class="hero-greeting">Hi, I'm</p>
+                <h1 class="hero-name">Laxminarayana Boga</h1>
+                <h2 class="hero-title">Lead Software Engineer</h2>
+                <p class="hero-description">
+                    10+ years building quality-first software — from enterprise test automation
+                    platforms to full-stack SaaS products. Currently at Cognizant, London.
+                </p>
+                <div class="hero-cta">
+                    <a href="#contact" class="btn btn-primary">Get in touch</a>
+                    <a href="https://github.com/laxminarayanaboga" target="_blank" class="btn btn-outline">GitHub</a>
                 </div>
             </div>
+            <div class="hero-image">
+                <img src="playground/myProfile/laxminarayanaBoga.png" alt="Laxminarayana Boga">
+            </div>
+        </div>
+    </section>
 
-            <div class="col my-apps-container-box">
-                <div class="card border-secondary">
-                    <h5 class="card-header">My Profile</h5>
-                    <div class="card-body text-secondary">
-                        <h5 class="card-title">Laxminarayana Boga</h5>
-                        <p class="card-text">Software Engineer | Lead Quality Engineer | Full Stack Developer | FrontEnd
-                            Engineer |
-                            Boorstrap | HTML-CSS-JS | JavaScript | NodeJS | MongoDB | Selenium | WebDriverIO</p>
-                        <a href="myProfile/index.html" class="btn btn-outline-secondary" target="_blank">My Profile</a>
+    <section class="about" id="about">
+        <div class="section-container">
+            <h2 class="section-title">About</h2>
+            <div class="about-content">
+                <p>I'm a software engineer with over a decade of experience across quality engineering, test automation,
+                    and full-stack development. I've worked with global teams across the UK and India, delivering
+                    automation frameworks and web applications for enterprises in real estate, fintech, and retail.</p>
+                <p>My engineering focus sits at the intersection of quality and product — I care about building things
+                    that are well-tested, maintainable, and actually solve problems. Lately that's meant leading quality
+                    engineering at Cognizant while building SaaS products on the side.</p>
+                <p>I write JavaScript end-to-end: Node.js and MongoDB on the backend, React on the frontend, and
+                    WebDriverIO/Selenium for automation. I'm also comfortable on AWS for infrastructure.</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="experience" id="experience">
+        <div class="section-container">
+            <h2 class="section-title">Experience</h2>
+            <div class="timeline">
+                <div class="timeline-item">
+                    <div class="timeline-meta">
+                        <span class="timeline-period">2022 — Present</span>
+                        <span class="timeline-location">London, UK</span>
+                    </div>
+                    <div class="timeline-body">
+                        <h3 class="timeline-company">Cognizant Technology Solutions</h3>
+                        <p class="timeline-role">Lead Quality Engineer</p>
+                    </div>
+                </div>
+                <div class="timeline-item">
+                    <div class="timeline-meta">
+                        <span class="timeline-period">2019 — 2022</span>
+                        <span class="timeline-location">Hyderabad, India</span>
+                    </div>
+                    <div class="timeline-body">
+                        <h3 class="timeline-company">CBRE</h3>
+                        <p class="timeline-role">Software Engineer</p>
+                    </div>
+                </div>
+                <div class="timeline-item">
+                    <div class="timeline-meta">
+                        <span class="timeline-period">2019</span>
+                        <span class="timeline-location">Hyderabad, India</span>
+                    </div>
+                    <div class="timeline-body">
+                        <h3 class="timeline-company">GAP Inc.</h3>
+                        <p class="timeline-role">Software Engineer</p>
+                    </div>
+                </div>
+                <div class="timeline-item">
+                    <div class="timeline-meta">
+                        <span class="timeline-period">2017 — 2019</span>
+                        <span class="timeline-location">Hyderabad, India</span>
+                    </div>
+                    <div class="timeline-body">
+                        <h3 class="timeline-company">DBS DAH2</h3>
+                        <p class="timeline-role">Software Engineer</p>
+                    </div>
+                </div>
+                <div class="timeline-item">
+                    <div class="timeline-meta">
+                        <span class="timeline-period">2013 — 2016</span>
+                        <span class="timeline-location">Hyderabad, India</span>
+                    </div>
+                    <div class="timeline-body">
+                        <h3 class="timeline-company">Cognizant Technology Solutions</h3>
+                        <p class="timeline-role">Software Engineer</p>
                     </div>
                 </div>
             </div>
         </div>
+    </section>
 
-        <div class="row row-cols-lg-3 row-cols-md-2 row-cols-sm-1  container-my-apps" id="apps">
-
-            <div class="col my-apps-container-box">
-                <div class="card border-light">
-                    <h5 class="card-header">My Tindog</h5>
-                    <div class="card-body">
-                        <h5 class="card-title">TinDog Application</h5>
-                        <p class="card-text">TIndog is a web application that mimics a routine Dating site. (for dogs)
-                        </p>
-                        <a href="TinDog-Start-master/index.html" class="btn btn-outline-dark" target="_blank">tindog</a>
+    <section class="skills" id="skills">
+        <div class="section-container">
+            <h2 class="section-title">Skills</h2>
+            <div class="skills-grid">
+                <div class="skill-group">
+                    <h3>Automation & QA</h3>
+                    <div class="skill-tags">
+                        <span>Selenium</span>
+                        <span>WebDriverIO</span>
+                        <span>Cypress</span>
+                        <span>Jest</span>
+                        <span>REST API Testing</span>
+                        <span>BDD / TDD</span>
                     </div>
                 </div>
-            </div>
-
-            <div class="col my-apps-container-box">
-                <div class="card border-light">
-                    <h5 class="card-header">Drum Kit</h5>
-                    <div class="card-body">
-                        <h5 class="card-title">Drum Kit Application</h5>
-                        <p class="card-text">Drum Kit is a web application where you can play various drums. So far, it
-                            supports 6 different drums</p>
-                        <a href="drum-kit/index.html" class="btn btn-outline-dark" target="_blank">Drum Kit</a>
+                <div class="skill-group">
+                    <h3>Backend</h3>
+                    <div class="skill-tags">
+                        <span>Node.js</span>
+                        <span>Express.js</span>
+                        <span>MongoDB</span>
+                        <span>REST APIs</span>
                     </div>
                 </div>
-            </div>
-
-            <div class="col my-apps-container-box">
-                <div class="card border-light">
-                    <h5 class="card-header">Dicee Game</h5>
-                    <div class="card-body">
-                        <h5 class="card-title">Dicee Game</h5>
-                        <p class="card-text">Dicee Game for couples. Refresh the page to roll the dicee. </p>
-                        <a href="DiceeFun/dicee.html" class="btn btn-outline-dark" target="_blank">Dicee</a>
+                <div class="skill-group">
+                    <h3>Frontend</h3>
+                    <div class="skill-tags">
+                        <span>JavaScript</span>
+                        <span>React</span>
+                        <span>HTML / CSS</span>
+                        <span>Bootstrap</span>
                     </div>
                 </div>
-            </div>
-
-            <div class="col my-apps-container-box">
-                <div class="card border-light">
-                    <h5 class="card-header">Calculator</h5>
-                    <div class="card-body">
-                        <h5 class="card-title">Calculator V1</h5>
-                        <p class="card-text">A simple calculator that is built using only HTML & CSS with beautiful
-                            layout
-                        </p>
-                        <a href="calV1/calculator.html" class="btn btn-outline-dark" target="_blank">Calculator</a>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col my-apps-container-box">
-                <div class="card border-light">
-                    <h5 class="card-header">Movies</h5>
-                    <div class="card-body">
-                        <h5 class="card-title">Movies - under development</h5>
-                        <p class="card-text">Movies - A web application that mimics any routine OTT platform. As of now
-                            it
-                            supports only the layout. </p>
-                        <a href="moviesV1/movies.html" class="btn btn-outline-dark" target="_blank">Movies</a>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col my-apps-container-box">
-                <div class="card border-light">
-                    <h5 class="card-header">Background Color Changer</h5>
-                    <div class="card-body">
-                        <h5 class="card-title">Project 1 - Background Color Changer</h5>
-                        <p class="card-text">Background Color Changer - A simple web page. The Background color will change upon a button click. </p>
-                        <a href="project-1-background-color-changer/index.html" class="btn btn-outline-dark" target="_blank">Background Color Changer</a>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col my-apps-container-box">
-                <div class="card border-light">
-                    <h5 class="card-header">Letter Counter</h5>
-                    <div class="card-body">
-                        <h5 class="card-title">Project 2 - Letter Counter</h5>
-                        <p class="card-text">A simple web page with single text box. It counts the number of letters entered by user and display on the page. </p>
-                        <a href="project-2-input-letter-counter/index.html" class="btn btn-outline-dark" target="_blank">Letter Counter</a>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col my-apps-container-box">
-                <div class="card border-light">
-                    <h5 class="card-header">Counter</h5>
-                    <div class="card-body">
-                        <h5 class="card-title">Project 3 - Number Counter</h5>
-                        <p class="card-text">A simple web page app - Increase and/or Descrease counter.</p>
-                        <a href="project-3-counter/index.html" class="btn btn-outline-dark" target="_blank">Counter</a>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col my-apps-container-box">
-                <div class="card border-light">
-                    <h5 class="card-header">To Do List</h5>
-                    <div class="card-body">
-                        <h5 class="card-title">Project 4 - To Do List</h5>
-                        <p class="card-text">A simple web page app - A to do list built using html + css + JavaScript</p>
-                        <a href="project-4-to-do-list/index.html" class="btn btn-outline-dark" target="_blank">To Do List</a>
-                    </div>
-                </div>
-            </div>
-
-        </div>
-
-        <div class="row row-cols-lg-3 row-cols-md-2 row-cols-sm-1 container-my-apps" id="animations">
-
-            <div class="col my-apps-container-box">
-                <div class="card border-dark">
-                    <h5 class="card-header">Digital Clock</h5>
-                    <div class="card-body text-dark">
-                        <h5 class="card-title">Digital Clock with Animations</h5>
-                        <p class="card-text">Digital Clock with Animations. An inspitation from <a
-                                href="https://www.youtube.com/@codingPathOfficial"
-                                target="_blank">codingPathOfficial</a>
-                        </p>
-                        <a href="DigitalClock/index.html" class="btn btn-outline-dark" target="_blank">Digital Clock</a>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col my-apps-container-box">
-                <div class="card border-dark">
-                    <h5 class="card-header">Analog Clock</h5>
-                    <div class="card-body text-dark">
-                        <h5 class="card-title">Analog Clock live</h5>
-                        <p class="card-text">Analog Clock built using html + css + JavaScript. Experience the movement of seconds hand, minutes hand and hours hand on the clock.</p>
-                        <a href="AnalogClock/index.html" class="btn btn-outline-dark" target="_blank">Analog Clock</a>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col my-apps-container-box">
-                <div class="card border-dark">
-                    <h5 class="card-header">Flower Animation</h5>
-                    <div class="card-body text-dark">
-                        <h5 class="card-title">Flower Animation</h5>
-                        <p class="card-text">A Flower Animation - Using pure CSS & HTML, a rotating and color changing
-                            flower Animation is created. </p>
-                        <a href="flowerAnimation/index.html" class="btn btn-outline-dark" target="_blank">Flower
-                            Animation</a>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col my-apps-container-box">
-                <div class="card border-dark">
-                    <h5 class="card-header">CSS loading animations</h5>
-                    <div class="card-body text-dark">
-                        <h5 class="card-title">CSS loading animations</h5>
-                        <p class="card-text">CSS loading animations - Using pure CSS & HTML, various page loading
-                            Animation
-                            are created. </p>
-                        <a href="cssLoadingAnimations/index.html" class="btn btn-outline-dark" target="_blank">CSS
-                            loading
-                            animations</a>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col my-apps-container-box">
-                <div class="card border-dark">
-                    <h5 class="card-header">Solar Eclipse</h5>
-                    <div class="card-body text-dark">
-                        <h5 class="card-title">Solar Eclipse Animation</h5>
-                        <p class="card-text">Solar Eclipse - Experience the amazing Solar eclipse. Simulated using pure
-                            CSS
-                            & HTML animations</p>
-                        <a href="solarExlipse/index.html" class="btn btn-outline-dark" target="_blank">Solar Eclipse</a>
+                <div class="skill-group">
+                    <h3>Cloud & Tools</h3>
+                    <div class="skill-tags">
+                        <span>AWS</span>
+                        <span>Git</span>
+                        <span>CI/CD</span>
+                        <span>Agile / Scrum</span>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
+    </section>
+
+    <section class="projects" id="projects">
+        <div class="section-container">
+            <h2 class="section-title">Projects</h2>
+            <div class="projects-grid">
+                <div class="project-card">
+                    <div class="project-header">
+                        <h3>HRApp</h3>
+                        <span class="project-status in-progress">In development</span>
+                    </div>
+                    <p class="project-description">A SaaS HR management platform built on AWS. Covers employee
+                        lifecycle, onboarding workflows, and HR operations for small to mid-size teams.</p>
+                    <div class="project-stack">
+                        <span>Node.js</span>
+                        <span>React</span>
+                        <span>MongoDB</span>
+                        <span>AWS</span>
+                    </div>
+                </div>
+                <div class="project-card project-card--placeholder">
+                    <div class="project-header">
+                        <h3>More coming</h3>
+                    </div>
+                    <p class="project-description">20+ products in the pipeline. Building in public — watch GitHub for
+                        updates.</p>
+                    <a href="https://github.com/laxminarayanaboga" target="_blank"
+                        class="project-link">github.com/laxminarayanaboga →</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer class="footer" id="contact">
+        <div class="footer-container">
+            <h2>Get in touch</h2>
+            <p>Open to senior engineering roles, consulting, and interesting product conversations.</p>
+            <div class="footer-links">
+                <a href="mailto:laxminarayanaboga4079@gmail.com" title="Email">
+                    <i class="fa-solid fa-envelope"></i>
+                </a>
+                <a href="https://linkedin.com/in/laxminarayana-boga-770b1456" target="_blank" title="LinkedIn">
+                    <i class="fa-brands fa-linkedin-in"></i>
+                </a>
+                <a href="https://github.com/laxminarayanaboga" target="_blank" title="GitHub">
+                    <i class="fa-brands fa-github"></i>
+                </a>
+                <a href="https://developers.google.com/profile/u/108461687167861174432" target="_blank"
+                    title="Google Developer Profile">
+                    <i class="fa-brands fa-google"></i>
+                </a>
+            </div>
+            <p class="footer-copy">© 2026 Laxminarayana Boga</p>
+        </div>
+    </footer>
+
+    <script>
+        window.addEventListener('scroll', () => {
+            document.getElementById('nav').classList.toggle('nav--scrolled', window.scrollY > 20);
+        });
+
+        document.getElementById('navToggle').addEventListener('click', () => {
+            document.getElementById('navLinks').classList.toggle('nav-links--open');
+        });
+
+        document.querySelectorAll('.nav-links a').forEach(link => {
+            link.addEventListener('click', () => {
+                document.getElementById('navLinks').classList.remove('nav-links--open');
+            });
+        });
+    </script>
 
 </body>
-
-<footer id="footer" class=" footer white-section">
-    <div class="container-fluid">
-        <div class="footer-icon-section">
-            <a href="https://linkedin.com/in/laxminarayana-boga-770b1456"><i
-                    class="fa-brands fa-linkedin-in fa-lg footer-icon"></i> </a>
-            <a href="https://github.com/laxminarayanaboga"><i class="fa-brands fa-github fa-lg footer-icon"></i></a>
-
-            <a href="https://developers.google.com/profile/u/108461687167861174432"><i
-                    class="fa-brands fa-google fa-lg footer-icon"></i></a>
-
-            <a href="mailto:laxminarayanaboga4079@gmail.com"><i class="fa-solid fa-envelope fa-lg footer-icon"></i></a>
-
-            <a href="tel:+447508656397"><i class="fa-solid fa-phone fa-lg footer-icon"></i></a>
-
-        </div>
-        <p>© Copyright Laxminarayana Boga</p>
-    </div>
-</footer>
 
 </html>
