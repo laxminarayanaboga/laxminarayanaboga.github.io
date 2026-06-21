@@ -1,11 +1,17 @@
 # laxminarayanaboga.github.io
 
-## Calculator V1
-- A simple html, css calculator
-- No javascript involved
-- Simple 
-- No error handling  
+Personal portfolio site for Laxminarayana Boga — Lead Software Engineer based in London.
 
-## Movies V1
-- Loading movie posters from `https://api.themoviedb.org/3/`
-- Simple html, css, javascript rendering to show the posters in a grid form
+Live at: https://laxminarayanaboga.github.io
+
+## Structure
+
+```
+index.html        — Portfolio landing page
+style.css         — Styles for the portfolio
+playground/       — Learning experiments and small projects (not portfolio pieces)
+```
+
+## Tech
+
+Plain HTML, CSS, and a small amount of vanilla JS. No build step.
