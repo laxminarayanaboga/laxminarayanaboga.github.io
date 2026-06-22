@@ -1,1 +1,6 @@
 **/.DS_Store
+
+# Personal / local files — keep out of the public repo
+*.docx
+*.pdf
+Screenshot*.png
