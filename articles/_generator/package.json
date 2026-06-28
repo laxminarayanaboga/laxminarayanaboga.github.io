@@ -1,0 +1,13 @@
+{
+  "name": "articles-generator",
+  "private": true,
+  "type": "module",
+  "description": "Build-time generator: converts articles/*.md into static, styled HTML pages with highlighted code and Mermaid diagrams baked to SVG. Output is committed; the served site needs no JS to render content.",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "highlight.js": "^11.9.0",
+    "marked": "^12.0.0"
+  }
+}

@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="A green UI assertion can hide a broken backend. Here's how to drive the front end with Playwright and then assert on the database and message store to prove the *system* actually did the right thing.">
+  <meta property="og:title" content="Don't Just Test the Screen: Verifying Database &amp; Message Side Effects in Playwright — Laxminarayana Boga">
+  <meta property="og:description" content="A green UI assertion can hide a broken backend. Here's how to drive the front end with Playwright and then assert on the database and message store to prove the *system* actually did the right thing.">
+  <meta property="og:type" content="article">
+  
+  <title>Don't Just Test the Screen: Verifying Database &amp; Message Side Effects in Playwright — Laxminarayana Boga</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://kit.fontawesome.com/e8e3708268.js" crossorigin="anonymous"></script>
+  <link rel="stylesheet" href="../style.css">
+  <link rel="stylesheet" href="../articles/assets/article.css">
+</head>
+<body>
+
+  <nav class="nav" id="nav">
+    <div class="nav-container">
+      <a href="../index.html" class="nav-logo">LB</a>
+      <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation">
+        <span></span><span></span><span></span>
+      </button>
+      <ul class="nav-links" id="navLinks">
+        <li><a href="../index.html#about">About</a></li>
+        <li><a href="../index.html#experience">Experience</a></li>
+        <li><a href="../index.html#projects">Projects</a></li>
+        <li><a href="index.html">Writing</a></li>
+        <li><a href="../index.html#contact">Contact</a></li>
+      </ul>
+    </div>
+  </nav>
+  <main class="article">
+    <div class="article-container">
+      <p class="article-eyebrow"><a href="index.html">Testing at Scale</a> · Part 7 of 11</p>
+      
+    <div class="medium-banner">
+      <span><i class="fa-brands fa-medium"></i> This article is also published on Medium.</span>
+      <a href="https://medium.com/@laxminarayanaboga4079" target="_blank" rel="noopener" class="medium-link">Read it on Medium →</a>
+    </div>
+      <article class="article-content">
+        <h1>Don&#39;t Just Test the Screen: Verifying Database &amp; Message Side Effects in Playwright</h1>
+<blockquote>
+<p>A green UI assertion can hide a broken backend. Here&#39;s how to drive the front end with Playwright and then assert on the database and message store to prove the <em>system</em> actually did the right thing.</p>
+</blockquote>
+<p>End‑to‑end tests usually stop at the surface: click the button, see the success banner, pass. But the banner only proves the <em>page</em> reacted — not that the order was written, the relational row was created, the document landed in the right collection, or the downstream record carries the right values. Some of the nastiest production bugs live precisely in that gap: the screen says &quot;done,&quot; the data says otherwise.</p>
+<p>This article is about closing that gap. We&#39;ll drive the UI with Playwright and then <strong>assert on backend side effects</strong> — relational rows and document‑store records — using connection fixtures, polling for asynchronous writes, and deep object matching. The result is a test that verifies the <em>system</em>, not just the view.</p>
+<hr>
+<h2>The pattern: act on the UI, assert on the data</h2>
+<p>The structure of a side‑effect test is always the same three beats:</p>
+<figure class="diagram"><svg id="container" width="1205.78125" xmlns="http://www.w3.org/2000/svg" class="flowchart" height="118" viewBox="0 0 1205.78125 118" role="graphics-document document" aria-roledescription="flowchart-v2"><style>#container{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:16px;fill:#333;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#container .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#container .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#container .error-icon{fill:#552222;}#container .error-text{fill:#552222;stroke:#552222;}#container .edge-thickness-normal{stroke-width:1px;}#container .edge-thickness-thick{stroke-width:3.5px;}#container .edge-pattern-solid{stroke-dasharray:0;}#container .edge-thickness-invisible{stroke-width:0;fill:none;}#container .edge-pattern-dashed{stroke-dasharray:3;}#container .edge-pattern-dotted{stroke-dasharray:2;}#container .marker{fill:#333333;stroke:#333333;}#container .marker.cross{stroke:#333333;}#container svg{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:16px;}#container p{margin:0;}#container .label{font-family:"trebuchet ms",verdana,arial,sans-serif;color:#333;}#container .cluster-label text{fill:#333;}#container .cluster-label span{color:#333;}#container .cluster-label span p{background-color:transparent;}#container .label text,#container span{fill:#333;color:#333;}#container .node rect,#container .node circle,#container .node ellipse,#container .node polygon,#container .node path{fill:#ECECFF;stroke:#9370DB;stroke-width:1px;}#container .rough-node .label text,#container .node .label text,#container .image-shape .label,#container .icon-shape .label{text-anchor:middle;}#container .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#container .rough-node .label,#container .node .label,#container .image-shape .label,#container .icon-shape .label{text-align:center;}#container .node.clickable{cursor:pointer;}#container .root .anchor path{fill:#333333!important;stroke-width:0;stroke:#333333;}#container .arrowheadPath{fill:#333333;}#container .edgePath .path{stroke:#333333;stroke-width:1px;}#container .flowchart-link{stroke:#333333;fill:none;}#container .edgeLabel{background-color:rgba(232,232,232, 0.8);text-align:center;}#container .edgeLabel p{background-color:rgba(232,232,232, 0.8);}#container .edgeLabel rect{opacity:0.5;background-color:rgba(232,232,232, 0.8);fill:rgba(232,232,232, 0.8);}#container .labelBkg{background-color:rgba(232, 232, 232, 0.5);}#container .cluster rect{fill:#ffffde;stroke:#aaaa33;stroke-width:1px;}#container .cluster text{fill:#333;}#container .cluster span{color:#333;}#container div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:12px;background:hsl(80, 100%, 96.2745098039%);border:1px solid #aaaa33;border-radius:2px;pointer-events:none;z-index:100;}#container .flowchartTitleText{text-anchor:middle;font-size:18px;fill:#333;}#container rect.text{fill:none;stroke-width:0;}#container .icon-shape,#container .image-shape{background-color:rgba(232,232,232, 0.8);text-align:center;}#container .icon-shape p,#container .image-shape p{background-color:rgba(232,232,232, 0.8);padding:2px;}#container .icon-shape .label rect,#container .image-shape .label rect{opacity:0.5;background-color:rgba(232,232,232, 0.8);fill:rgba(232,232,232, 0.8);}#container .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#container .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#container .node .neo-node{stroke:#9370DB;}#container [data-look="neo"].node rect,#container [data-look="neo"].cluster rect,#container [data-look="neo"].node polygon{stroke:#9370DB;filter:drop-shadow(1px 2px 2px rgba(185, 185, 185, 1));}#container [data-look="neo"].node path{stroke:#9370DB;stroke-width:1px;}#container [data-look="neo"].node .outer-path{filter:drop-shadow(1px 2px 2px rgba(185, 185, 185, 1));}#container [data-look="neo"].node .neo-line path{stroke:#9370DB;filter:none;}#container [data-look="neo"].node circle{stroke:#9370DB;filter:drop-shadow(1px 2px 2px rgba(185, 185, 185, 1));}#container [data-look="neo"].node circle .state-start{fill:#000000;}#container [data-look="neo"].icon-shape .icon{fill:#9370DB;filter:drop-shadow(1px 2px 2px rgba(185, 185, 185, 1));}#container [data-look="neo"].icon-shape .icon-neo path{stroke:#9370DB;filter:drop-shadow(1px 2px 2px rgba(185, 185, 185, 1));}#container :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}</style><g><marker id="container_flowchart-v2-pointEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker><marker id="container_flowchart-v2-pointStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker><marker id="container_flowchart-v2-pointEnd-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="11.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="10.5" markerHeight="14" orient="auto"><path d="M 0 0 L 11.5 7 L 0 14 z" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></path></marker><marker id="container_flowchart-v2-pointStart-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="1" refY="7" markerUnits="userSpaceOnUse" markerWidth="11.5" markerHeight="14" orient="auto"><polygon points="0,7 11.5,14 11.5,0" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></polygon></marker><marker id="container_flowchart-v2-circleEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="11" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></circle></marker><marker id="container_flowchart-v2-circleStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-1" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></circle></marker><marker id="container_flowchart-v2-circleEnd-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refY="5" refX="12.25" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></circle></marker><marker id="container_flowchart-v2-circleStart-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-2" refY="5" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></circle></marker><marker id="container_flowchart-v2-crossEnd" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="12" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"></path></marker><marker id="container_flowchart-v2-crossStart" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="-1" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"></path></marker><marker id="container_flowchart-v2-crossEnd-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="17.7" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5;"></path></marker><marker id="container_flowchart-v2-crossStart-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="-3.5" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5; stroke-dasharray: 1, 0;"></path></marker><g class="root"><g class="clusters"></g><g class="edgePaths"><path d="M267.781,59L271.948,59C276.115,59,284.448,59,292.115,59C299.781,59,306.781,59,310.281,59L313.781,59" id="container-L_A_B_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_A_B_0" data-points="W3sieCI6MjY3Ljc4MTI1LCJ5Ijo1OX0seyJ4IjoyOTIuNzgxMjUsInkiOjU5fSx7IngiOjMxNy43ODEyNSwieSI6NTl9XQ==" data-look="classic" marker-end="url(#container_flowchart-v2-pointEnd)"></path><path d="M577.781,59L581.948,59C586.115,59,594.448,59,602.115,59C609.781,59,616.781,59,620.281,59L623.781,59" id="container-L_B_C_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_B_C_0" data-points="W3sieCI6NTc3Ljc4MTI1LCJ5Ijo1OX0seyJ4Ijo2MDIuNzgxMjUsInkiOjU5fSx7IngiOjYyNy43ODEyNSwieSI6NTl9XQ==" data-look="classic" marker-end="url(#container_flowchart-v2-pointEnd)"></path><path d="M887.781,59L891.948,59C896.115,59,904.448,59,912.115,59C919.781,59,926.781,59,930.281,59L933.781,59" id="container-L_C_D_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_C_D_0" data-points="W3sieCI6ODg3Ljc4MTI1LCJ5Ijo1OX0seyJ4Ijo5MTIuNzgxMjUsInkiOjU5fSx7IngiOjkzNy43ODEyNSwieSI6NTl9XQ==" data-look="classic" marker-end="url(#container_flowchart-v2-pointEnd)"></path></g><g class="edgeLabels"><g class="edgeLabel"><g class="label" data-id="L_A_B_0" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" data-id="L_B_C_0" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" data-id="L_C_D_0" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g></g><g class="nodes"><g class="node default" id="container-flowchart-A-0" data-look="classic" transform="translate(137.890625, 59)"><rect class="basic label-container" style="" x="-129.890625" y="-39" width="259.78125" height="78"></rect><g class="label" style="" transform="translate(-99.890625, -24)"><rect></rect><foreignObject width="199.78125" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>Act<br/>drive the UI with Playwright</p></span></div></foreignObject></g></g><g class="node default" id="container-flowchart-B-1" data-look="classic" transform="translate(447.78125, 59)"><rect class="basic label-container" style="" x="-130" y="-51" width="260" height="102"></rect><g class="label" style="" transform="translate(-100, -36)"><rect></rect><foreignObject width="200" height="72"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 200px; text-align: center; width: 200px;"><span class="nodeLabel"><p>Wait<br/>poll for the async write to settle</p></span></div></foreignObject></g></g><g class="node default" id="container-flowchart-C-3" data-look="classic" transform="translate(757.78125, 59)"><rect class="basic label-container" style="" x="-130" y="-51" width="260" height="102"></rect><g class="label" style="" transform="translate(-100, -36)"><rect></rect><foreignObject width="200" height="72"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 200px; text-align: center; width: 200px;"><span class="nodeLabel"><p>Assert<br/>verify the row / document is correct</p></span></div></foreignObject></g></g><g class="node default" id="container-flowchart-D-5" data-look="classic" transform="translate(1067.78125, 59)"><rect class="basic label-container" style="" x="-130" y="-51" width="260" height="102"></rect><g class="label" style="" transform="translate(-100, -36)"><rect></rect><foreignObject width="200" height="72"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 200px; text-align: center; width: 200px;"><span class="nodeLabel"><p>Clean up<br/>teardown removes what we created</p></span></div></foreignObject></g></g></g></g></g><defs><filter id="container-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"></feDropShadow></filter></defs><defs><filter id="container-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"></feDropShadow></filter></defs></svg></figure><p>The middle beat — <em>wait</em> — is what separates a reliable data assertion from a flaky one, because backend writes are rarely synchronous with the UI response. We&#39;ll come back to it.</p>
+<hr>
+<h2>Step 1 — Database access as a worker‑scoped fixture</h2>
+<p>Opening a database connection per test would be slow and wasteful across thousands of tests. Instead, expose the connection as a <strong>worker‑scoped fixture</strong>: created once per worker process, reused by every test that worker runs, and closed automatically at the end.</p>
+<pre><code class="language-js"><span class="hljs-attr">dbConnection</span>: [<span class="hljs-title function_">async</span> ({}, use) =&gt; {
+  <span class="hljs-keyword">const</span> db = <span class="hljs-keyword">new</span> <span class="hljs-title class_">DbConnection</span>();
+  <span class="hljs-keyword">await</span> db.<span class="hljs-title function_">connect</span>();
+  <span class="hljs-keyword">await</span> <span class="hljs-title function_">use</span>(db);        <span class="hljs-comment">// shared across all tests in this worker</span>
+  <span class="hljs-keyword">await</span> db.<span class="hljs-title function_">close</span>();     <span class="hljs-comment">// teardown when the worker finishes</span>
+}, { <span class="hljs-attr">scope</span>: <span class="hljs-string">&quot;worker&quot;</span> }],
+
+<span class="hljs-attr">docStore</span>: [<span class="hljs-title function_">async</span> ({}, use) =&gt; {
+  <span class="hljs-keyword">const</span> store = <span class="hljs-title class_">DocStoreConnection</span>.<span class="hljs-title function_">getInstance</span>();
+  <span class="hljs-keyword">await</span> store.<span class="hljs-title function_">connect</span>();
+  <span class="hljs-keyword">await</span> <span class="hljs-title function_">use</span>(store);
+  <span class="hljs-keyword">await</span> store.<span class="hljs-title function_">close</span>();
+}, { <span class="hljs-attr">scope</span>: <span class="hljs-string">&quot;worker&quot;</span> }],</code></pre>
+<p>The connection wrapper itself stays thin — connect, run a parameterised query, close:</p>
+<pre><code class="language-js"><span class="hljs-keyword">class</span> <span class="hljs-title class_">DbConnection</span> {
+  <span class="hljs-keyword">async</span> <span class="hljs-title function_">query</span>(<span class="hljs-params">sql, args</span>) {
+    <span class="hljs-keyword">const</span> [rows] = <span class="hljs-keyword">await</span> <span class="hljs-variable language_">this</span>.<span class="hljs-property">connection</span>.<span class="hljs-title function_">execute</span>(sql, args); <span class="hljs-comment">// parameterised</span>
+    <span class="hljs-keyword">return</span> rows;
+  }
+}</code></pre>
+<blockquote>
+<p><strong>Security note:</strong> always use <em>parameterised</em> queries (<code>execute(sql, args)</code>), never string‑concatenate test values into SQL. Test code that builds queries from data is just as injectable as production code — and test data often comes from external sources.</p>
+</blockquote>
+<p>A test now requests the connection like any other dependency, with zero setup code:</p>
+<pre><code class="language-js"><span class="hljs-title function_">test</span>(<span class="hljs-string">&quot;submitting the form persists an order&quot;</span>, <span class="hljs-title function_">async</span> ({ page, dbConnection }) =&gt; {
+  <span class="hljs-keyword">await</span> <span class="hljs-title function_">submitOrderForm</span>(page);
+  <span class="hljs-comment">// ... assert against dbConnection</span>
+});</code></pre>
+<hr>
+<h2>Step 2 — Poll for asynchronous writes (don&#39;t sleep)</h2>
+<p>The single biggest cause of flaky data assertions is asserting <em>too early</em>. The UI returns, the test queries the database, and the row isn&#39;t there yet — because a queue, a worker, or an async handler hasn&#39;t finished. The wrong fix is <code>await wait(5000)</code>: too short and it&#39;s flaky, too long and it&#39;s slow.</p>
+<p>The right fix is a <strong>poll‑until‑present</strong> helper that retries on an interval up to a timeout:</p>
+<pre><code class="language-js"><span class="hljs-keyword">async</span> <span class="hljs-keyword">function</span> <span class="hljs-title function_">pollForRecord</span>(<span class="hljs-params">db, email, intervalMs = <span class="hljs-number">2000</span>, timeoutMs = <span class="hljs-number">60000</span></span>) {
+  <span class="hljs-keyword">const</span> deadline = <span class="hljs-title class_">Date</span>.<span class="hljs-title function_">now</span>() + timeoutMs;
+  <span class="hljs-keyword">while</span> (<span class="hljs-title class_">Date</span>.<span class="hljs-title function_">now</span>() &lt; deadline) {
+    <span class="hljs-keyword">const</span> rows = <span class="hljs-keyword">await</span> db.<span class="hljs-title function_">query</span>(
+      <span class="hljs-string">&quot;SELECT * FROM orders WHERE customer_email = ? AND is_active = 1&quot;</span>,
+      [email]
+    );
+    <span class="hljs-keyword">if</span> (rows.<span class="hljs-property">length</span> &gt; <span class="hljs-number">0</span>) <span class="hljs-keyword">return</span> rows;     <span class="hljs-comment">// success — return as soon as it appears</span>
+    <span class="hljs-keyword">await</span> <span class="hljs-title function_">wait</span>(intervalMs);
+  }
+  <span class="hljs-keyword">throw</span> <span class="hljs-keyword">new</span> <span class="hljs-title class_">Error</span>(<span class="hljs-string">`No active order appeared for <span class="hljs-subst">${email}</span> within <span class="hljs-subst">${timeoutMs}</span>ms`</span>);
+}</code></pre>
+<p>This is the database equivalent of Playwright&#39;s web‑first auto‑waiting: assert on a <em>condition becoming true</em>, not on a fixed delay. It&#39;s fast when the write is fast, patient when it&#39;s slow, and it fails with a clear message instead of a mysterious empty result.</p>
+<pre><code class="language-js"><span class="hljs-title function_">test</span>(<span class="hljs-string">&quot;order is written to the database after submission&quot;</span>, <span class="hljs-title function_">async</span> ({ page, dbConnection }) =&gt; {
+  <span class="hljs-keyword">const</span> email = <span class="hljs-keyword">await</span> <span class="hljs-title function_">submitOrderForm</span>(page);
+  <span class="hljs-keyword">const</span> [order] = <span class="hljs-keyword">await</span> <span class="hljs-title function_">pollForRecord</span>(dbConnection, email);
+
+  <span class="hljs-title function_">expect</span>(order.<span class="hljs-property">status</span>).<span class="hljs-title function_">toBe</span>(<span class="hljs-string">&quot;active&quot;</span>);
+  <span class="hljs-title function_">expect</span>(<span class="hljs-title class_">Number</span>(order.<span class="hljs-property">amount</span>)).<span class="hljs-title function_">toBe</span>(<span class="hljs-number">250</span>);
+});</code></pre>
+<hr>
+<h2>Step 3 — Deep‑match documents against expected data</h2>
+<p>Relational checks are usually a few columns. Document stores are different: you often want to assert that a <em>whole nested document</em> matches an expected shape — but only the fields you care about, ignoring volatile ones like generated IDs and timestamps.</p>
+<p>Hand‑writing dozens of <code>expect(doc.a.b.c).toBe(...)</code> lines is brittle. A better approach is a <strong>deep, partial matcher</strong> that compares an actual document against an expected fixture, with support for &quot;ignore this field&quot; markers:</p>
+<pre><code class="language-js"><span class="hljs-title function_">test</span>(<span class="hljs-string">&quot;the stored document matches the expected shape&quot;</span>, <span class="hljs-title function_">async</span> ({ docStore }) =&gt; {
+  <span class="hljs-keyword">const</span> expected = <span class="hljs-keyword">await</span> <span class="hljs-title function_">loadExpectedJson</span>(<span class="hljs-string">&quot;order-created-expected.json&quot;</span>);
+  <span class="hljs-keyword">const</span> actual   = <span class="hljs-keyword">await</span> docStore.<span class="hljs-title function_">findLatestFor</span>(testUser.<span class="hljs-property">email</span>);
+
+  <span class="hljs-comment">// Partial deep match: every field in `expected` must match `actual`;</span>
+  <span class="hljs-comment">// fields marked as &quot;#ignore&quot; (ids, timestamps) are skipped.</span>
+  <span class="hljs-title function_">match</span>(actual, expected);
+});</code></pre>
+<pre><code class="language-json"><span class="hljs-punctuation">{</span>
+  <span class="hljs-attr">&quot;type&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-string">&quot;ORDER_CREATED&quot;</span><span class="hljs-punctuation">,</span>
+  <span class="hljs-attr">&quot;customer&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-punctuation">{</span> <span class="hljs-attr">&quot;email&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-string">&quot;buyer@example.test&quot;</span><span class="hljs-punctuation">,</span> <span class="hljs-attr">&quot;tier&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-string">&quot;standard&quot;</span> <span class="hljs-punctuation">}</span><span class="hljs-punctuation">,</span>
+  <span class="hljs-attr">&quot;amount&quot;</span><span class="hljs-punctuation">:</span>   <span class="hljs-number">250</span><span class="hljs-punctuation">,</span>
+  <span class="hljs-attr">&quot;id&quot;</span><span class="hljs-punctuation">:</span>        <span class="hljs-string">&quot;#ignore&quot;</span><span class="hljs-punctuation">,</span>
+  <span class="hljs-attr">&quot;createdAt&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-string">&quot;#ignore&quot;</span>
+<span class="hljs-punctuation">}</span></code></pre>
+<p>Keeping the expected shape as a <strong>data file</strong> (resolved through the same environment/variant fallback your other test data uses) means contributors update expectations by editing JSON, not test code — and the matcher reports the exact path of any mismatch (<code>customer.tier: expected &#39;standard&#39;, got &#39;premium&#39;</code>), which makes failures self‑explaining.</p>
+<hr>
+<h2>Step 4 — Cleanup is part of the test, not an afterthought</h2>
+<p>Side‑effect tests <em>create</em> side effects. Left unattended, those accumulate and eventually cause the very collisions that make suites flaky — a &quot;user already exists,&quot; a stale record matched by the next run. So cleanup must be reliable and, ideally, automatic.</p>
+<p>Two complementary tactics:</p>
+<p><strong>Targeted teardown via a fixture</strong> — the test declares what it touched, and a fixture removes it afterward regardless of outcome:</p>
+<pre><code class="language-js"><span class="hljs-attr">cleanupCreatedOrders</span>: <span class="hljs-title function_">async</span> ({ dbConnection, testUser }, use) =&gt; {
+  <span class="hljs-keyword">await</span> <span class="hljs-title function_">use</span>(<span class="hljs-keyword">new</span> <span class="hljs-title class_">DoNothing</span>());                 <span class="hljs-comment">// setup: nothing</span>
+  <span class="hljs-keyword">await</span> <span class="hljs-title function_">deactivateOrdersFor</span>(dbConnection, testUser.<span class="hljs-property">email</span>); <span class="hljs-comment">// teardown: always</span>
+},</code></pre>
+<p><strong>Defensive pre‑cleanup</strong> — before a test that depends on a clean slate, proactively neutralise any leftovers from prior runs using a forgiving (fuzzy) match across the identifiers a user might be recognised by:</p>
+<pre><code class="language-js"><span class="hljs-keyword">async</span> <span class="hljs-keyword">function</span> <span class="hljs-title function_">purgeLeftovers</span>(<span class="hljs-params">{ db, docStore, user }</span>) {
+  <span class="hljs-keyword">await</span> <span class="hljs-title function_">clearDocCacheFor</span>(docStore, user);            <span class="hljs-comment">// doc store</span>
+  <span class="hljs-keyword">const</span> ids = <span class="hljs-keyword">await</span> <span class="hljs-title function_">findRelatedIds</span>(db, user);        <span class="hljs-comment">// fuzzy: email, phone, name+dob</span>
+  <span class="hljs-keyword">if</span> (ids.<span class="hljs-property">length</span> === <span class="hljs-number">0</span>) <span class="hljs-keyword">return</span>;
+  <span class="hljs-keyword">await</span> <span class="hljs-title function_">deactivateOrders</span>(db, ids);
+  <span class="hljs-keyword">await</span> <span class="hljs-title function_">deleteAuthRecord</span>(ids[<span class="hljs-number">0</span>]);
+  <span class="hljs-keyword">await</span> <span class="hljs-title function_">deactivateProfiles</span>(db, ids);
+}</code></pre>
+<blockquote>
+<p>The fuzzy‑match cleanup matters because real systems recognise the same person through several keys (email, normalised phone, name + date of birth + postcode). Cleaning by a single key leaves orphans that the <em>next</em> test trips over. Match the way the system matches.</p>
+</blockquote>
+<hr>
+<h2>Putting it together</h2>
+<p>A complete side‑effect test reads as one clear story — act, wait, assert across layers, and let teardown clean up:</p>
+<pre><code class="language-js"><span class="hljs-title function_">test</span>(<span class="hljs-string">&quot;a completed purchase is consistent across UI, database, and document store&quot;</span>,
+  <span class="hljs-title function_">async</span> ({ page, dbConnection, docStore, cleanupCreatedOrders }) =&gt; {
+    <span class="hljs-comment">// ACT — front end</span>
+    <span class="hljs-keyword">const</span> email = <span class="hljs-keyword">await</span> <span class="hljs-title function_">completePurchase</span>(page);
+    <span class="hljs-keyword">await</span> <span class="hljs-title function_">expect</span>(page.<span class="hljs-title function_">getByText</span>(<span class="hljs-string">&quot;Order confirmed&quot;</span>)).<span class="hljs-title function_">toBeVisible</span>();
+
+    <span class="hljs-comment">// WAIT + ASSERT — relational</span>
+    <span class="hljs-keyword">const</span> [order] = <span class="hljs-keyword">await</span> <span class="hljs-title function_">pollForRecord</span>(dbConnection, email);
+    <span class="hljs-title function_">expect</span>(order.<span class="hljs-property">status</span>).<span class="hljs-title function_">toBe</span>(<span class="hljs-string">&quot;active&quot;</span>);
+
+    <span class="hljs-comment">// ASSERT — document store</span>
+    <span class="hljs-keyword">const</span> doc = <span class="hljs-keyword">await</span> docStore.<span class="hljs-title function_">findLatestFor</span>(email);
+    <span class="hljs-title function_">match</span>(doc, <span class="hljs-keyword">await</span> <span class="hljs-title function_">loadExpectedJson</span>(<span class="hljs-string">&quot;order-created-expected.json&quot;</span>));
+
+    <span class="hljs-comment">// CLEANUP happens automatically via the fixture</span>
+  }
+);</code></pre>
+<p>The UI assertion proves the user saw success; the database and document assertions prove the <em>system</em> delivered it. That&#39;s the difference between testing the screen and testing the software.</p>
+<hr>
+<h2>Lessons learned</h2>
+<ul>
+<li><strong>A green UI isn&#39;t proof of a correct backend.</strong> Assert on the data the action was supposed to produce, not just the banner that says it did.</li>
+<li><strong>Share connections per worker.</strong> Worker‑scoped fixtures give you pooling for free and guarantee the connection is closed.</li>
+<li><strong>Poll, never sleep.</strong> Retry until the asynchronous write appears, with a clear timeout error — the data‑layer equivalent of auto‑waiting.</li>
+<li><strong>Deep‑match documents from data files.</strong> A partial matcher with &quot;ignore&quot; markers keeps assertions robust against volatile fields and lets non‑coders maintain expectations.</li>
+<li><strong>Clean up the way the system identifies users.</strong> Fuzzy, multi‑key cleanup (and teardown fixtures) prevent the orphaned records that make suites flaky over time.</li>
+<li><strong>Parameterise every query.</strong> Test SQL is production‑grade attack surface; never concatenate values.</li>
+</ul>
+<p>Reaching past the browser into the database and message store turns &quot;it looked like it worked&quot; into &quot;it provably worked.&quot; For the journeys that really matter, that extra layer of truth is what makes an end‑to‑end test actually end‑to‑end.</p>
+<hr>
+<p><em>Written from real‑world experience building a large, multi‑environment Playwright suite. All names, values, schema, and examples are generic illustrations of the patterns described.</em></p>
+
+      </article>
+      
+    <aside class="author-bio">
+      <div class="author-bio-text">
+        <p class="author-name">Laxminarayana Boga</p>
+        <p class="author-role">Lead Quality Engineer & SDET · 13 years in test automation, cloud-native CI/CD, and AI-first engineering. London, UK.</p>
+        <div class="author-links">
+          <a href="https://medium.com/@laxminarayanaboga4079" target="_blank" rel="noopener">Medium</a>
+          <a href="https://linkedin.com/in/laxminarayana-boga-770b1456" target="_blank" rel="noopener">LinkedIn</a>
+          <a href="https://github.com/laxminarayanaboga" target="_blank" rel="noopener">GitHub</a>
+          <a href="../index.html">Portfolio</a>
+        </div>
+      </div>
+    </aside>
+      
+    <nav class="series-nav" aria-label="Series navigation">
+      <a class="series-prev" href="time-travel-testing.html">← Time‑Travel Testing in Playwright: Automating Date‑Sensitive Flows</a>
+      <a class="series-all" href="index.html">All articles</a>
+      <a class="series-next" href="network-interception-contract-validation.html">Beyond Mocking: Capturing Real Network Traffic and Validating Response Contracts →</a>
+    </nav>
+    </div>
+  </main>
+
+  <footer class="footer" id="contact">
+    <div class="footer-container">
+      <h2>Get in touch</h2>
+      <p>Open to senior engineering roles, consulting, and interesting product conversations.</p>
+      <div class="footer-links">
+        <a href="mailto:laxminarayanaboga4079@gmail.com" title="Email"><i class="fa-solid fa-envelope"></i></a>
+        <a href="https://linkedin.com/in/laxminarayana-boga-770b1456" target="_blank" rel="noopener" title="LinkedIn"><i class="fa-brands fa-linkedin-in"></i></a>
+        <a href="https://github.com/laxminarayanaboga" target="_blank" rel="noopener" title="GitHub"><i class="fa-brands fa-github"></i></a>
+        <a href="https://medium.com/@laxminarayanaboga4079" target="_blank" rel="noopener" title="Medium">
+          <svg viewBox="0 0 24 24" width="1.1em" height="1.1em" fill="currentColor" aria-hidden="true" style="vertical-align:-0.1em;">
+            <path d="M13.54 12a6.8 6.8 0 0 1-6.77 6.82A6.8 6.8 0 0 1 0 12a6.8 6.8 0 0 1 6.77-6.82A6.8 6.8 0 0 1 13.54 12zM20.96 12c0 3.54-1.51 6.42-3.38 6.42-1.87 0-3.39-2.88-3.39-6.42s1.52-6.42 3.39-6.42 3.38 2.88 3.38 6.42M24 12c0 3.17-.53 5.75-1.19 5.75-.66 0-1.19-2.58-1.19-5.75s.53-5.75 1.19-5.75C23.47 6.25 24 8.83 24 12z" />
+          </svg>
+        </a>
+      </div>
+      <p class="footer-copy">© 2026 Laxminarayana Boga</p>
+    </div>
+  </footer>
+
+  <script>
+    window.addEventListener('scroll', () => {
+      document.getElementById('nav').classList.toggle('nav--scrolled', window.scrollY > 20);
+    });
+    const t = document.getElementById('navToggle');
+    if (t) t.addEventListener('click', () =>
+      document.getElementById('navLinks').classList.toggle('nav-links--open'));
+  </script>
+</body>
+</html>

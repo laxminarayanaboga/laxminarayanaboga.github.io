@@ -4,3 +4,6 @@
 *.docx
 *.pdf
 Screenshot*.png
+
+# Article generator dependencies (build tooling, not served)
+node_modules/
