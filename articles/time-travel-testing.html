@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Some bugs only appear on the last day of the month, on a leap year, or 30 days after sign‑up. Here's how to make those moments reproducible by controlling the clock — and how to put time back when the test ends.">
+  <meta property="og:title" content="Time‑Travel Testing in Playwright: Automating Date‑Sensitive Flows — Laxminarayana Boga">
+  <meta property="og:description" content="Some bugs only appear on the last day of the month, on a leap year, or 30 days after sign‑up. Here's how to make those moments reproducible by controlling the clock — and how to put time back when the test ends.">
+  <meta property="og:type" content="article">
+  
+  <title>Time‑Travel Testing in Playwright: Automating Date‑Sensitive Flows — Laxminarayana Boga</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://kit.fontawesome.com/e8e3708268.js" crossorigin="anonymous"></script>
+  <link rel="stylesheet" href="../style.css">
+  <link rel="stylesheet" href="../articles/assets/article.css">
+</head>
+<body>
+
+  <nav class="nav" id="nav">
+    <div class="nav-container">
+      <a href="../index.html" class="nav-logo">LB</a>
+      <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation">
+        <span></span><span></span><span></span>
+      </button>
+      <ul class="nav-links" id="navLinks">
+        <li><a href="../index.html#about">About</a></li>
+        <li><a href="../index.html#experience">Experience</a></li>
+        <li><a href="../index.html#projects">Projects</a></li>
+        <li><a href="index.html">Writing</a></li>
+        <li><a href="../index.html#contact">Contact</a></li>
+      </ul>
+    </div>
+  </nav>
+  <main class="article">
+    <div class="article-container">
+      <p class="article-eyebrow"><a href="index.html">Testing at Scale</a> · Part 6 of 11</p>
+      
+    <div class="medium-banner">
+      <span><i class="fa-brands fa-medium"></i> This article is also published on Medium.</span>
+      <a href="https://medium.com/@laxminarayanaboga4079" target="_blank" rel="noopener" class="medium-link">Read it on Medium →</a>
+    </div>
+      <article class="article-content">
+        <h1>Time‑Travel Testing in Playwright: Automating Date‑Sensitive Flows</h1>
+<blockquote>
+<p>Some bugs only appear on the last day of the month, on a leap year, or 30 days after sign‑up. Here&#39;s how to make those moments reproducible by controlling the clock — and how to put time back when the test ends.</p>
+</blockquote>
+<p>A surprising amount of software behaviour depends on <em>what day it is</em>. Billing cycles, subscription renewals, free‑trial expiries, statement generation, &quot;due in 7 days&quot; reminders, weekend vs weekday logic, month‑end rollups — none of these can be tested honestly by waiting for the calendar to cooperate. You need to <strong>travel in time</strong>.</p>
+<p>This article covers a pragmatic time‑travel technique for end‑to‑end Playwright tests: shifting the <strong>host system clock</strong> so the whole stack — browser, app, and backend — agrees it&#39;s a different day, then guaranteeing the clock is restored no matter how the test ends.</p>
+<blockquote>
+<p>There are two flavours of time control. We&#39;ll start with the lightweight in‑browser approach, then move to the heavyweight system‑clock approach for true full‑stack date travel.</p>
+</blockquote>
+<hr>
+<h2>Two ways to fake time (and when each fails)</h2>
+<p><strong>1. Browser‑only mocking.</strong> Playwright can freeze or shift the clock <em>inside the page</em>:</p>
+<pre><code class="language-js"><span class="hljs-keyword">await</span> page.<span class="hljs-property">clock</span>.<span class="hljs-title function_">setFixedTime</span>(<span class="hljs-keyword">new</span> <span class="hljs-title class_">Date</span>(<span class="hljs-string">&quot;2026-01-31T09:00:00&quot;</span>));</code></pre>
+<p>This is fast, isolated, and perfect when the date logic lives in the <strong>front end</strong> — a countdown, a &quot;renews on&quot; label computed client‑side, relative timestamps.</p>
+<p>But it has a hard limit: it only fools <code>Date</code> in the browser tab. The moment your <em>backend</em> stamps a record with its own server time, or a downstream service decides &quot;today is the 31st,&quot; the illusion breaks. The page thinks it&#39;s month‑end; the server disagrees.</p>
+<p><strong>2. System‑clock travel.</strong> For genuinely full‑stack date behaviour — where the <em>server</em> must believe it&#39;s a different day — you shift the clock of the machine the whole stack runs on. Heavier and more invasive, but it&#39;s the only thing that makes the entire system agree on &quot;now.&quot;</p>
+<p>The rest of this article is about doing (2) safely.</p>
+<hr>
+<h2>Shifting the host clock from a test helper</h2>
+<p>In an environment where the app, services, and tests share a host (a local dev box or a self‑contained CI container), a small helper can set the OS date by shelling out to the system:</p>
+<pre><code class="language-js"><span class="hljs-keyword">const</span> { exec } = <span class="hljs-built_in">require</span>(<span class="hljs-string">&quot;child_process&quot;</span>);
+<span class="hljs-keyword">const</span> util = <span class="hljs-built_in">require</span>(<span class="hljs-string">&quot;util&quot;</span>);
+<span class="hljs-keyword">const</span> execAsync = util.<span class="hljs-title function_">promisify</span>(exec);
+
+<span class="hljs-keyword">export</span> <span class="hljs-keyword">async</span> <span class="hljs-keyword">function</span> <span class="hljs-title function_">setSystemDate</span>(<span class="hljs-params">dateString</span>) {
+  <span class="hljs-comment">// dateString: &quot;YYYY-MM-DD&quot;</span>
+  <span class="hljs-keyword">const</span> [year, month, day] = dateString.<span class="hljs-title function_">split</span>(<span class="hljs-string">&quot;-&quot;</span>);
+
+  <span class="hljs-comment">// Apply the new date via the OS date command, then let services settle</span>
+  <span class="hljs-keyword">await</span> <span class="hljs-title function_">applyOsDate</span>({ year, month, day });
+  <span class="hljs-keyword">await</span> <span class="hljs-title function_">wait</span>(<span class="hljs-number">5000</span>); <span class="hljs-comment">// give the stack a moment to observe the new clock</span>
+
+  <span class="hljs-comment">// Always verify the change actually took effect</span>
+  <span class="hljs-keyword">const</span> now = <span class="hljs-keyword">await</span> <span class="hljs-title function_">readOsDate</span>();
+  <span class="hljs-variable language_">console</span>.<span class="hljs-title function_">log</span>(<span class="hljs-string">`System date is now: <span class="hljs-subst">${now}</span>`</span>);
+}</code></pre>
+<p>Two non‑obvious but important details:</p>
+<ul>
+<li><strong>Settle, then verify.</strong> After changing the clock, wait briefly and <em>read it back</em>. Date changes aren&#39;t always instantaneous, and a silent failure here produces baffling test results (&quot;why is it still yesterday?&quot;). Verifying turns a heisenbug into a clear log line.</li>
+<li><strong>Treat it as environment mutation, not test data.</strong> Changing the host clock affects <em>everything</em> on that host — every parallel worker, every service. That has consequences we&#39;ll address head‑on below.</li>
+</ul>
+<p>Exposed as a single helper, the test reads cleanly:</p>
+<pre><code class="language-js"><span class="hljs-title function_">test</span>(<span class="hljs-string">&quot;invoice is generated on the last day of the month&quot;</span>, <span class="hljs-title function_">async</span> ({ page }) =&gt; {
+  <span class="hljs-keyword">await</span> <span class="hljs-title function_">setSystemDate</span>(<span class="hljs-string">&quot;2026-01-31&quot;</span>);
+  <span class="hljs-keyword">await</span> <span class="hljs-title function_">triggerBillingRun</span>(page);
+  <span class="hljs-keyword">await</span> <span class="hljs-title function_">expectInvoiceVisible</span>(page);
+});</code></pre>
+<hr>
+<h2>The real problem: putting time back</h2>
+<p>Here&#39;s the trap. The test above <em>works</em> — until it fails halfway through, or someone adds an early <code>return</code>, and the clock is left in the past. Now every subsequent test on that host is silently running in the wrong year. One forgotten restore poisons the entire run.</p>
+<p>A <code>try/finally</code> helps, but it&#39;s easy to forget and easy to bypass. The robust answer is a <strong>teardown‑only fixture</strong> that restores the real date <em>after every test that touches time</em>, guaranteed, pass or fail:</p>
+<pre><code class="language-js"><span class="hljs-attr">restoreSystemClock</span>: <span class="hljs-title function_">async</span> ({}, use) =&gt; {
+  <span class="hljs-keyword">await</span> <span class="hljs-title function_">use</span>(<span class="hljs-keyword">new</span> <span class="hljs-title class_">DoNothing</span>());        <span class="hljs-comment">// setup: hand back a no-op</span>
+  <span class="hljs-keyword">const</span> today = <span class="hljs-keyword">new</span> <span class="hljs-title class_">Date</span>().<span class="hljs-title function_">toISOString</span>().<span class="hljs-title function_">split</span>(<span class="hljs-string">&quot;T&quot;</span>)[<span class="hljs-number">0</span>];
+  <span class="hljs-keyword">await</span> <span class="hljs-title function_">setSystemDate</span>(today);        <span class="hljs-comment">// teardown: ALWAYS restores real date</span>
+},</code></pre>
+<p>A date‑sensitive test opts into the guarantee simply by <strong>listing the fixture</strong> — it never writes cleanup code:</p>
+<pre><code class="language-js"><span class="hljs-title function_">test</span>(<span class="hljs-string">&quot;trial expires 30 days after signup&quot;</span>, <span class="hljs-title function_">async</span> ({ page, restoreSystemClock }) =&gt; {
+  <span class="hljs-keyword">await</span> <span class="hljs-title function_">signUp</span>(page);
+  <span class="hljs-keyword">await</span> <span class="hljs-title function_">setSystemDate</span>(<span class="hljs-title function_">daysFromNow</span>(<span class="hljs-number">30</span>)); <span class="hljs-comment">// jump forward</span>
+  <span class="hljs-keyword">await</span> <span class="hljs-title function_">expectTrialExpired</span>(page);
+  <span class="hljs-comment">// no restore here — the fixture resets the clock on teardown, even on failure</span>
+});</code></pre>
+<p>Because Playwright runs fixture teardown in reverse order regardless of outcome, the clock is <em>always</em> put back. This converts &quot;remember to undo your time change&quot; from a code‑review hope into a structural guarantee.</p>
+<figure class="diagram"><svg id="container" width="275.21875" xmlns="http://www.w3.org/2000/svg" class="flowchart" height="782.90625" viewBox="0 0 275.21875 782.90625" role="graphics-document document" aria-roledescription="flowchart-v2"><style>#container{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:16px;fill:#333;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#container .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#container .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#container .error-icon{fill:#552222;}#container .error-text{fill:#552222;stroke:#552222;}#container .edge-thickness-normal{stroke-width:1px;}#container .edge-thickness-thick{stroke-width:3.5px;}#container .edge-pattern-solid{stroke-dasharray:0;}#container .edge-thickness-invisible{stroke-width:0;fill:none;}#container .edge-pattern-dashed{stroke-dasharray:3;}#container .edge-pattern-dotted{stroke-dasharray:2;}#container .marker{fill:#333333;stroke:#333333;}#container .marker.cross{stroke:#333333;}#container svg{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:16px;}#container p{margin:0;}#container .label{font-family:"trebuchet ms",verdana,arial,sans-serif;color:#333;}#container .cluster-label text{fill:#333;}#container .cluster-label span{color:#333;}#container .cluster-label span p{background-color:transparent;}#container .label text,#container span{fill:#333;color:#333;}#container .node rect,#container .node circle,#container .node ellipse,#container .node polygon,#container .node path{fill:#ECECFF;stroke:#9370DB;stroke-width:1px;}#container .rough-node .label text,#container .node .label text,#container .image-shape .label,#container .icon-shape .label{text-anchor:middle;}#container .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#container .rough-node .label,#container .node .label,#container .image-shape .label,#container .icon-shape .label{text-align:center;}#container .node.clickable{cursor:pointer;}#container .root .anchor path{fill:#333333!important;stroke-width:0;stroke:#333333;}#container .arrowheadPath{fill:#333333;}#container .edgePath .path{stroke:#333333;stroke-width:1px;}#container .flowchart-link{stroke:#333333;fill:none;}#container .edgeLabel{background-color:rgba(232,232,232, 0.8);text-align:center;}#container .edgeLabel p{background-color:rgba(232,232,232, 0.8);}#container .edgeLabel rect{opacity:0.5;background-color:rgba(232,232,232, 0.8);fill:rgba(232,232,232, 0.8);}#container .labelBkg{background-color:rgba(232, 232, 232, 0.5);}#container .cluster rect{fill:#ffffde;stroke:#aaaa33;stroke-width:1px;}#container .cluster text{fill:#333;}#container .cluster span{color:#333;}#container div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:12px;background:hsl(80, 100%, 96.2745098039%);border:1px solid #aaaa33;border-radius:2px;pointer-events:none;z-index:100;}#container .flowchartTitleText{text-anchor:middle;font-size:18px;fill:#333;}#container rect.text{fill:none;stroke-width:0;}#container .icon-shape,#container .image-shape{background-color:rgba(232,232,232, 0.8);text-align:center;}#container .icon-shape p,#container .image-shape p{background-color:rgba(232,232,232, 0.8);padding:2px;}#container .icon-shape .label rect,#container .image-shape .label rect{opacity:0.5;background-color:rgba(232,232,232, 0.8);fill:rgba(232,232,232, 0.8);}#container .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#container .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#container .node .neo-node{stroke:#9370DB;}#container [data-look="neo"].node rect,#container [data-look="neo"].cluster rect,#container [data-look="neo"].node polygon{stroke:#9370DB;filter:drop-shadow(1px 2px 2px rgba(185, 185, 185, 1));}#container [data-look="neo"].node path{stroke:#9370DB;stroke-width:1px;}#container [data-look="neo"].node .outer-path{filter:drop-shadow(1px 2px 2px rgba(185, 185, 185, 1));}#container [data-look="neo"].node .neo-line path{stroke:#9370DB;filter:none;}#container [data-look="neo"].node circle{stroke:#9370DB;filter:drop-shadow(1px 2px 2px rgba(185, 185, 185, 1));}#container [data-look="neo"].node circle .state-start{fill:#000000;}#container [data-look="neo"].icon-shape .icon{fill:#9370DB;filter:drop-shadow(1px 2px 2px rgba(185, 185, 185, 1));}#container [data-look="neo"].icon-shape .icon-neo path{stroke:#9370DB;filter:drop-shadow(1px 2px 2px rgba(185, 185, 185, 1));}#container :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}</style><g><marker id="container_flowchart-v2-pointEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker><marker id="container_flowchart-v2-pointStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker><marker id="container_flowchart-v2-pointEnd-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="11.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="10.5" markerHeight="14" orient="auto"><path d="M 0 0 L 11.5 7 L 0 14 z" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></path></marker><marker id="container_flowchart-v2-pointStart-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="1" refY="7" markerUnits="userSpaceOnUse" markerWidth="11.5" markerHeight="14" orient="auto"><polygon points="0,7 11.5,14 11.5,0" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></polygon></marker><marker id="container_flowchart-v2-circleEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="11" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></circle></marker><marker id="container_flowchart-v2-circleStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-1" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></circle></marker><marker id="container_flowchart-v2-circleEnd-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refY="5" refX="12.25" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></circle></marker><marker id="container_flowchart-v2-circleStart-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-2" refY="5" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></circle></marker><marker id="container_flowchart-v2-crossEnd" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="12" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"></path></marker><marker id="container_flowchart-v2-crossStart" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="-1" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"></path></marker><marker id="container_flowchart-v2-crossEnd-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="17.7" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5;"></path></marker><marker id="container_flowchart-v2-crossStart-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="-3.5" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5; stroke-dasharray: 1, 0;"></path></marker><g class="root"><g class="clusters"></g><g class="edgePaths"><path d="M137.609,86L137.609,90.167C137.609,94.333,137.609,102.667,137.609,110.333C137.609,118,137.609,125,137.609,128.5L137.609,132" id="container-L_A_B_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_A_B_0" data-points="W3sieCI6MTM3LjYwOTM3NSwieSI6ODZ9LHsieCI6MTM3LjYwOTM3NSwieSI6MTExfSx7IngiOjEzNy42MDkzNzUsInkiOjEzNn1d" data-look="classic" marker-end="url(#container_flowchart-v2-pointEnd)"></path><path d="M137.609,190L137.609,194.167C137.609,198.333,137.609,206.667,137.609,214.333C137.609,222,137.609,229,137.609,232.5L137.609,236" id="container-L_B_C_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_B_C_0" data-points="W3sieCI6MTM3LjYwOTM3NSwieSI6MTkwfSx7IngiOjEzNy42MDkzNzUsInkiOjIxNX0seyJ4IjoxMzcuNjA5Mzc1LCJ5IjoyNDB9XQ==" data-look="classic" marker-end="url(#container_flowchart-v2-pointEnd)"></path><path d="M137.609,318L137.609,322.167C137.609,326.333,137.609,334.667,137.609,342.333C137.609,350,137.609,357,137.609,360.5L137.609,364" id="container-L_C_D_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_C_D_0" data-points="W3sieCI6MTM3LjYwOTM3NSwieSI6MzE4fSx7IngiOjEzNy42MDkzNzUsInkiOjM0M30seyJ4IjoxMzcuNjA5Mzc1LCJ5IjozNjh9XQ==" data-look="classic" marker-end="url(#container_flowchart-v2-pointEnd)"></path><path d="M118.358,499.655L115.147,509.03C111.935,518.405,105.513,537.156,105.669,552.127C105.825,567.097,112.561,578.288,115.929,583.884L119.296,589.479" id="container-L_D_E_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_D_E_0" data-points="W3sieCI6MTE4LjM1ODA4MDkwMTE4NzYsInkiOjQ5OS42NTQ5NTU5MDExODc2M30seyJ4Ijo5OS4wODk4NDM3NSwieSI6NTU1LjkwNjI1fSx7IngiOjEyMS4zNTg5NDc3NTM5MDYyNSwieSI6NTkyLjkwNjI1fV0=" data-look="classic" marker-end="url(#container_flowchart-v2-pointEnd)"></path><path d="M156.861,499.655L160.072,509.03C163.283,518.405,169.706,537.156,169.55,552.127C169.393,567.097,162.658,578.288,159.29,583.884L155.922,589.479" id="container-L_D_E_2" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_D_E_2" data-points="W3sieCI6MTU2Ljg2MDY2OTA5ODgxMjQsInkiOjQ5OS42NTQ5NTU5MDExODc2M30seyJ4IjoxNzYuMTI4OTA2MjUsInkiOjU1NS45MDYyNX0seyJ4IjoxNTMuODU5ODAyMjQ2MDkzNzUsInkiOjU5Mi45MDYyNX1d" data-look="classic" marker-end="url(#container_flowchart-v2-pointEnd)"></path><path d="M137.609,646.906L137.609,651.073C137.609,655.24,137.609,663.573,137.609,671.24C137.609,678.906,137.609,685.906,137.609,689.406L137.609,692.906" id="container-L_E_F_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_E_F_0" data-points="W3sieCI6MTM3LjYwOTM3NSwieSI6NjQ2LjkwNjI1fSx7IngiOjEzNy42MDkzNzUsInkiOjY3MS45MDYyNX0seyJ4IjoxMzcuNjA5Mzc1LCJ5Ijo2OTYuOTA2MjV9XQ==" data-look="classic" marker-end="url(#container_flowchart-v2-pointEnd)"></path></g><g class="edgeLabels"><g class="edgeLabel"><g class="label" data-id="L_A_B_0" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" data-id="L_B_C_0" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" data-id="L_C_D_0" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(101.72687, 548.20777)"><g class="label" data-id="L_D_E_0" transform="translate(-16.34375, -12)"><foreignObject width="32.6875" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>pass</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(173.49188, 548.20777)"><g class="label" data-id="L_D_E_2" transform="translate(-40.6953125, -12)"><foreignObject width="81.390625" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>fail / throw</p></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" data-id="L_E_F_0" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g></g><g class="nodes"><g class="node default" id="container-flowchart-A-0" data-look="classic" transform="translate(137.609375, 47)"><rect class="basic label-container" style="" x="-126.125" y="-39" width="252.25" height="78"></rect><g class="label" style="" transform="translate(-96.125, -24)"><rect></rect><foreignObject width="192.25" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>Test requests<br/>restoreSystemClock fixture</p></span></div></foreignObject></g></g><g class="node default" id="container-flowchart-B-1" data-look="classic" transform="translate(137.609375, 163)"><rect class="basic label-container" style="" x="-123.015625" y="-27" width="246.03125" height="54"></rect><g class="label" style="" transform="translate(-93.015625, -12)"><rect></rect><foreignObject width="186.03125" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>Setup: no-op (DoNothing)</p></span></div></foreignObject></g></g><g class="node default" id="container-flowchart-C-3" data-look="classic" transform="translate(137.609375, 279)"><rect class="basic label-container" style="" x="-129.609375" y="-39" width="259.21875" height="78"></rect><g class="label" style="" transform="translate(-99.609375, -24)"><rect></rect><foreignObject width="199.21875" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>Test body shifts the clock<br/>setSystemDate('2026-01-31')</p></span></div></foreignObject></g></g><g class="node default" id="container-flowchart-D-5" data-look="classic" transform="translate(137.609375, 443.453125)"><polygon points="75.453125,0 150.90625,-75.453125 75.453125,-150.90625 0,-75.453125" class="label-container" transform="translate(-74.953125, 75.453125)"></polygon><g class="label" style="" transform="translate(-48.453125, -12)"><rect></rect><foreignObject width="96.90625" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>Test outcome</p></span></div></foreignObject></g></g><g class="node default" id="container-flowchart-E-7" data-look="classic" transform="translate(137.609375, 619.90625)"><rect class="basic label-container" style="" x="-128.9375" y="-27" width="257.875" height="54"></rect><g class="label" style="" transform="translate(-98.9375, -12)"><rect></rect><foreignObject width="197.875" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>Teardown: restore real date</p></span></div></foreignObject></g></g><g class="node default" id="container-flowchart-F-11" data-look="classic" transform="translate(137.609375, 735.90625)"><rect class="basic label-container" style="" x="-97.2578125" y="-39" width="194.515625" height="78"></rect><g class="label" style="" transform="translate(-67.2578125, -24)"><rect></rect><foreignObject width="134.515625" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>Host clock is clean<br/>for the next test</p></span></div></foreignObject></g></g></g></g></g><defs><filter id="container-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"></feDropShadow></filter></defs><defs><filter id="container-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"></feDropShadow></filter></defs></svg></figure><hr>
+<h2>Synchronising on server time, not local time</h2>
+<p>Once the <em>server</em> owns &quot;now,&quot; your assertions must trust the <em>server&#39;s</em> clock, not the test process&#39;s. A subtle but real source of flakiness is reading <code>new Date()</code> in the test and comparing it to a timestamp the server produced moments later — clock skew of even a second or two breaks &quot;is this after that?&quot; checks.</p>
+<p>The fix is to anchor on server time explicitly:</p>
+<pre><code class="language-js"><span class="hljs-attr">noteServerTime</span>: <span class="hljs-title function_">async</span> ({ request }, use, runTimeCache) =&gt; {
+  <span class="hljs-keyword">const</span> serverNow = <span class="hljs-keyword">await</span> <span class="hljs-title function_">getServerTime</span>(request); <span class="hljs-comment">// ask the app, not the OS</span>
+  runTimeCache.<span class="hljs-property">notedTime</span> = serverNow;
+  <span class="hljs-keyword">await</span> <span class="hljs-title function_">use</span>();
+},</code></pre>
+<pre><code class="language-js"><span class="hljs-title function_">test</span>(<span class="hljs-string">&quot;reminder fires after the due date&quot;</span>, <span class="hljs-title function_">async</span> ({ page, request }) =&gt; {
+  <span class="hljs-keyword">const</span> before = <span class="hljs-keyword">await</span> <span class="hljs-title function_">getServerTime</span>(request);   <span class="hljs-comment">// server&#x27;s clock</span>
+  <span class="hljs-keyword">await</span> <span class="hljs-title function_">advanceSystemDateBy</span>({ <span class="hljs-attr">days</span>: <span class="hljs-number">8</span> });
+  <span class="hljs-keyword">await</span> <span class="hljs-title function_">triggerReminderJob</span>(page);
+  <span class="hljs-keyword">const</span> stamped = <span class="hljs-keyword">await</span> <span class="hljs-title function_">readReminderTimestamp</span>(page);
+  <span class="hljs-title function_">expect</span>(stamped).<span class="hljs-title function_">toBeGreaterThan</span>(before);        <span class="hljs-comment">// compare server-to-server</span>
+});</code></pre>
+<blockquote>
+<p>Rule of thumb for date tests: <strong>whoever owns the source of truth for &quot;now&quot; is who you compare against.</strong> If the backend stamps records, read the backend&#39;s clock — never assume the test runner&#39;s clock matches.</p>
+</blockquote>
+<hr>
+<h2>Keeping clock‑travel tests off the parallel highway</h2>
+<p>Mutating a shared host clock is fundamentally <strong>global</strong>: it affects every test running on that host simultaneously. Two tests time‑travelling to different dates in parallel will corrupt each other. So these tests must be treated as a special, serialised class:</p>
+<ul>
+<li><strong>Isolate them.</strong> Run clock‑sensitive tests with a single worker, or pin them to a dedicated execution slice that never overlaps with others (the per‑suite concurrency model: wide workers for independent tests, <em>one</em> worker for time‑travel flows).</li>
+<li><strong>Tag them</strong> so they can be selected, scheduled, and <em>excluded</em> deliberately — you don&#39;t want a date‑shifting test sneaking into a wide parallel batch.</li>
+<li><strong>Always pair them with the restore fixture</strong>, so even a crash leaves the next suite a clean clock.</li>
+</ul>
+<p>This is the price of full‑stack time travel: it buys you honest end‑to‑end date behaviour, at the cost of giving up parallelism for that slice. For the handful of genuinely date‑critical journeys, it&#39;s a trade worth making — and for everything else, the lightweight in‑browser <code>page.clock</code> approach keeps its parallelism.</p>
+<hr>
+<h2>Lessons learned</h2>
+<ul>
+<li><strong>Pick the right altitude.</strong> In‑browser <code>page.clock</code> for front‑end date logic; system‑clock travel only when the <em>server</em> must agree on the date.</li>
+<li><strong>Settle and verify after changing the clock.</strong> A read‑back log line turns silent date failures into obvious ones.</li>
+<li><strong>Make restoration structural, not optional.</strong> A teardown‑only fixture guarantees the clock is reset on pass, fail, or crash — the single most important safeguard.</li>
+<li><strong>Compare against the clock that owns the truth.</strong> If the backend stamps &quot;now,&quot; read the backend&#39;s time; never trust cross‑process clock equality.</li>
+<li><strong>Serialise and tag clock‑travel tests.</strong> Global state can&#39;t run in parallel — isolate it, label it, and keep it out of wide batches.</li>
+</ul>
+<p>Date‑sensitive behaviour is some of the highest‑value, lowest‑covered surface area in most applications. With a small clock helper, a teardown guard, and a bit of execution discipline, those once‑a‑month and once‑a‑year code paths become tests you can run any day you like.</p>
+<hr>
+<p><em>Written from real‑world experience building a large, multi‑environment Playwright suite. All names, values, and examples are generic illustrations of the patterns described.</em></p>
+
+      </article>
+      
+    <aside class="author-bio">
+      <div class="author-bio-text">
+        <p class="author-name">Laxminarayana Boga</p>
+        <p class="author-role">Lead Quality Engineer & SDET · 13 years in test automation, cloud-native CI/CD, and AI-first engineering. London, UK.</p>
+        <div class="author-links">
+          <a href="https://medium.com/@laxminarayanaboga4079" target="_blank" rel="noopener">Medium</a>
+          <a href="https://linkedin.com/in/laxminarayana-boga-770b1456" target="_blank" rel="noopener">LinkedIn</a>
+          <a href="https://github.com/laxminarayanaboga" target="_blank" rel="noopener">GitHub</a>
+          <a href="../index.html">Portfolio</a>
+        </div>
+      </div>
+    </aside>
+      
+    <nav class="series-nav" aria-label="Series navigation">
+      <a class="series-prev" href="cicd-aws-terraform-pipeline.html">← Running Playwright in the Cloud: A Reusable CI/CD Pipeline with Docker, Terraform &amp; AWS</a>
+      <a class="series-all" href="index.html">All articles</a>
+      <a class="series-next" href="database-side-effect-assertions.html">Don't Just Test the Screen: Verifying Database &amp; Message Side Effects in Playwright →</a>
+    </nav>
+    </div>
+  </main>
+
+  <footer class="footer" id="contact">
+    <div class="footer-container">
+      <h2>Get in touch</h2>
+      <p>Open to senior engineering roles, consulting, and interesting product conversations.</p>
+      <div class="footer-links">
+        <a href="mailto:laxminarayanaboga4079@gmail.com" title="Email"><i class="fa-solid fa-envelope"></i></a>
+        <a href="https://linkedin.com/in/laxminarayana-boga-770b1456" target="_blank" rel="noopener" title="LinkedIn"><i class="fa-brands fa-linkedin-in"></i></a>
+        <a href="https://github.com/laxminarayanaboga" target="_blank" rel="noopener" title="GitHub"><i class="fa-brands fa-github"></i></a>
+        <a href="https://medium.com/@laxminarayanaboga4079" target="_blank" rel="noopener" title="Medium">
+          <svg viewBox="0 0 24 24" width="1.1em" height="1.1em" fill="currentColor" aria-hidden="true" style="vertical-align:-0.1em;">
+            <path d="M13.54 12a6.8 6.8 0 0 1-6.77 6.82A6.8 6.8 0 0 1 0 12a6.8 6.8 0 0 1 6.77-6.82A6.8 6.8 0 0 1 13.54 12zM20.96 12c0 3.54-1.51 6.42-3.38 6.42-1.87 0-3.39-2.88-3.39-6.42s1.52-6.42 3.39-6.42 3.38 2.88 3.38 6.42M24 12c0 3.17-.53 5.75-1.19 5.75-.66 0-1.19-2.58-1.19-5.75s.53-5.75 1.19-5.75C23.47 6.25 24 8.83 24 12z" />
+          </svg>
+        </a>
+      </div>
+      <p class="footer-copy">© 2026 Laxminarayana Boga</p>
+    </div>
+  </footer>
+
+  <script>
+    window.addEventListener('scroll', () => {
+      document.getElementById('nav').classList.toggle('nav--scrolled', window.scrollY > 20);
+    });
+    const t = document.getElementById('navToggle');
+    if (t) t.addEventListener('click', () =>
+      document.getElementById('navLinks').classList.toggle('nav-links--open'));
+  </script>
+</body>
+</html>

@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="A single `axe-core` script in a corner of the repo is easy to ignore. Wiring accessibility checks into the *same* tag‑driven, fixture‑backed, reported pipeline as your functional tests is what makes them actually stick.">
+  <meta property="og:title" content="Accessibility Testing at Scale: From One‑Off axe Script to a Tagged, Gated, Reported Suite — Laxminarayana Boga">
+  <meta property="og:description" content="A single `axe-core` script in a corner of the repo is easy to ignore. Wiring accessibility checks into the *same* tag‑driven, fixture‑backed, reported pipeline as your functional tests is what makes them actually stick.">
+  <meta property="og:type" content="article">
+  
+  <title>Accessibility Testing at Scale: From One‑Off axe Script to a Tagged, Gated, Reported Suite — Laxminarayana Boga</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://kit.fontawesome.com/e8e3708268.js" crossorigin="anonymous"></script>
+  <link rel="stylesheet" href="../style.css">
+  <link rel="stylesheet" href="../articles/assets/article.css">
+</head>
+<body>
+
+  <nav class="nav" id="nav">
+    <div class="nav-container">
+      <a href="../index.html" class="nav-logo">LB</a>
+      <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation">
+        <span></span><span></span><span></span>
+      </button>
+      <ul class="nav-links" id="navLinks">
+        <li><a href="../index.html#about">About</a></li>
+        <li><a href="../index.html#experience">Experience</a></li>
+        <li><a href="../index.html#projects">Projects</a></li>
+        <li><a href="index.html">Writing</a></li>
+        <li><a href="../index.html#contact">Contact</a></li>
+      </ul>
+    </div>
+  </nav>
+  <main class="article">
+    <div class="article-container">
+      <p class="article-eyebrow"><a href="index.html">Testing at Scale</a> · Part 9 of 11</p>
+      
+    <div class="medium-banner">
+      <span><i class="fa-brands fa-medium"></i> This article is also published on Medium.</span>
+      <a href="https://medium.com/@laxminarayanaboga4079" target="_blank" rel="noopener" class="medium-link">Read it on Medium →</a>
+    </div>
+      <article class="article-content">
+        <h1>Accessibility Testing at Scale: From One‑Off axe Script to a Tagged, Gated, Reported Suite</h1>
+<blockquote>
+<p>A single <code>axe-core</code> script in a corner of the repo is easy to ignore. Wiring accessibility checks into the <em>same</em> tag‑driven, fixture‑backed, reported pipeline as your functional tests is what makes them actually stick.</p>
+</blockquote>
+<p>Most teams&#39; accessibility story is a script someone wrote once, ran a few times, and quietly abandoned. It lives outside the main suite, isn&#39;t gated in CI, produces a report nobody reads, and rots. The technology — <code>axe-core</code> — is excellent. The <em>integration</em> is the problem.</p>
+<p>This article is about treating accessibility as a first‑class citizen of a large Playwright‑BDD suite: a reusable step that any scenario can call, the same tags that drive functional execution, machine‑readable reports attached to every run, and a hard gate that fails the build on a violation. Low sensitivity throughout — nothing here is product‑specific.</p>
+<hr>
+<h2>The shift: a checkpoint, not a separate suite</h2>
+<p>The key mental move is to stop thinking of accessibility as &quot;a kind of test&quot; and start thinking of it as <strong>a checkpoint you can drop into any journey</strong>. A page worth functionally testing is a page worth scanning. So the scan becomes a reusable step, callable both as a standalone scenario <em>and</em> inline mid‑journey.</p>
+<figure class="diagram"><svg id="container" width="1422.5" xmlns="http://www.w3.org/2000/svg" class="flowchart" height="393.7109375" viewBox="0 0 1422.5 393.7109375" role="graphics-document document" aria-roledescription="flowchart-v2"><style>#container{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:16px;fill:#333;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#container .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#container .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#container .error-icon{fill:#552222;}#container .error-text{fill:#552222;stroke:#552222;}#container .edge-thickness-normal{stroke-width:1px;}#container .edge-thickness-thick{stroke-width:3.5px;}#container .edge-pattern-solid{stroke-dasharray:0;}#container .edge-thickness-invisible{stroke-width:0;fill:none;}#container .edge-pattern-dashed{stroke-dasharray:3;}#container .edge-pattern-dotted{stroke-dasharray:2;}#container .marker{fill:#333333;stroke:#333333;}#container .marker.cross{stroke:#333333;}#container svg{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:16px;}#container p{margin:0;}#container .label{font-family:"trebuchet ms",verdana,arial,sans-serif;color:#333;}#container .cluster-label text{fill:#333;}#container .cluster-label span{color:#333;}#container .cluster-label span p{background-color:transparent;}#container .label text,#container span{fill:#333;color:#333;}#container .node rect,#container .node circle,#container .node ellipse,#container .node polygon,#container .node path{fill:#ECECFF;stroke:#9370DB;stroke-width:1px;}#container .rough-node .label text,#container .node .label text,#container .image-shape .label,#container .icon-shape .label{text-anchor:middle;}#container .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#container .rough-node .label,#container .node .label,#container .image-shape .label,#container .icon-shape .label{text-align:center;}#container .node.clickable{cursor:pointer;}#container .root .anchor path{fill:#333333!important;stroke-width:0;stroke:#333333;}#container .arrowheadPath{fill:#333333;}#container .edgePath .path{stroke:#333333;stroke-width:1px;}#container .flowchart-link{stroke:#333333;fill:none;}#container .edgeLabel{background-color:rgba(232,232,232, 0.8);text-align:center;}#container .edgeLabel p{background-color:rgba(232,232,232, 0.8);}#container .edgeLabel rect{opacity:0.5;background-color:rgba(232,232,232, 0.8);fill:rgba(232,232,232, 0.8);}#container .labelBkg{background-color:rgba(232, 232, 232, 0.5);}#container .cluster rect{fill:#ffffde;stroke:#aaaa33;stroke-width:1px;}#container .cluster text{fill:#333;}#container .cluster span{color:#333;}#container div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:12px;background:hsl(80, 100%, 96.2745098039%);border:1px solid #aaaa33;border-radius:2px;pointer-events:none;z-index:100;}#container .flowchartTitleText{text-anchor:middle;font-size:18px;fill:#333;}#container rect.text{fill:none;stroke-width:0;}#container .icon-shape,#container .image-shape{background-color:rgba(232,232,232, 0.8);text-align:center;}#container .icon-shape p,#container .image-shape p{background-color:rgba(232,232,232, 0.8);padding:2px;}#container .icon-shape .label rect,#container .image-shape .label rect{opacity:0.5;background-color:rgba(232,232,232, 0.8);fill:rgba(232,232,232, 0.8);}#container .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#container .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#container .node .neo-node{stroke:#9370DB;}#container [data-look="neo"].node rect,#container [data-look="neo"].cluster rect,#container [data-look="neo"].node polygon{stroke:#9370DB;filter:drop-shadow(1px 2px 2px rgba(185, 185, 185, 1));}#container [data-look="neo"].node path{stroke:#9370DB;stroke-width:1px;}#container [data-look="neo"].node .outer-path{filter:drop-shadow(1px 2px 2px rgba(185, 185, 185, 1));}#container [data-look="neo"].node .neo-line path{stroke:#9370DB;filter:none;}#container [data-look="neo"].node circle{stroke:#9370DB;filter:drop-shadow(1px 2px 2px rgba(185, 185, 185, 1));}#container [data-look="neo"].node circle .state-start{fill:#000000;}#container [data-look="neo"].icon-shape .icon{fill:#9370DB;filter:drop-shadow(1px 2px 2px rgba(185, 185, 185, 1));}#container [data-look="neo"].icon-shape .icon-neo path{stroke:#9370DB;filter:drop-shadow(1px 2px 2px rgba(185, 185, 185, 1));}#container :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}</style><g><marker id="container_flowchart-v2-pointEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker><marker id="container_flowchart-v2-pointStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker><marker id="container_flowchart-v2-pointEnd-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="11.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="10.5" markerHeight="14" orient="auto"><path d="M 0 0 L 11.5 7 L 0 14 z" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></path></marker><marker id="container_flowchart-v2-pointStart-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="1" refY="7" markerUnits="userSpaceOnUse" markerWidth="11.5" markerHeight="14" orient="auto"><polygon points="0,7 11.5,14 11.5,0" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></polygon></marker><marker id="container_flowchart-v2-circleEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="11" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></circle></marker><marker id="container_flowchart-v2-circleStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-1" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></circle></marker><marker id="container_flowchart-v2-circleEnd-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refY="5" refX="12.25" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></circle></marker><marker id="container_flowchart-v2-circleStart-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-2" refY="5" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></circle></marker><marker id="container_flowchart-v2-crossEnd" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="12" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"></path></marker><marker id="container_flowchart-v2-crossStart" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="-1" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"></path></marker><marker id="container_flowchart-v2-crossEnd-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="17.7" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5;"></path></marker><marker id="container_flowchart-v2-crossStart-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="-3.5" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5; stroke-dasharray: 1, 0;"></path></marker><g class="root"><g class="clusters"></g><g class="edgePaths"><path d="M266.047,163L270.214,163C274.38,163,282.714,163,290.38,163C298.047,163,305.047,163,308.547,163L312.047,163" id="container-L_A_B_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_A_B_0" data-points="W3sieCI6MjY2LjA0Njg3NSwieSI6MTYzfSx7IngiOjI5MS4wNDY4NzUsInkiOjE2M30seyJ4IjozMTYuMDQ2ODc1LCJ5IjoxNjN9XQ==" data-look="classic" marker-end="url(#container_flowchart-v2-pointEnd)"></path><path d="M576.047,163L580.214,163C584.38,163,592.714,163,600.38,163C608.047,163,615.047,163,618.547,163L622.047,163" id="container-L_B_C_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_B_C_0" data-points="W3sieCI6NTc2LjA0Njg3NSwieSI6MTYzfSx7IngiOjYwMS4wNDY4NzUsInkiOjE2M30seyJ4Ijo2MjYuMDQ2ODc1LCJ5IjoxNjN9XQ==" data-look="classic" marker-end="url(#container_flowchart-v2-pointEnd)"></path><path d="M750.095,136L765.556,121.167C781.017,106.333,811.938,76.667,830.899,61.833C849.859,47,856.859,47,860.359,47L863.859,47" id="container-L_C_D_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_C_D_0" data-points="W3sieCI6NzUwLjA5NTA5Njk4Mjc1ODYsInkiOjEzNn0seyJ4Ijo4NDIuODU5Mzc1LCJ5Ijo0N30seyJ4Ijo4NjcuODU5Mzc1LCJ5Ijo0N31d" data-look="classic" marker-end="url(#container_flowchart-v2-pointEnd)"></path><path d="M817.859,163L822.026,163C826.193,163,834.526,163,846.768,163C859.01,163,875.161,163,883.237,163L891.313,163" id="container-L_C_E_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_C_E_0" data-points="W3sieCI6ODE3Ljg1OTM3NSwieSI6MTYzfSx7IngiOjg0Mi44NTkzNzUsInkiOjE2M30seyJ4Ijo4OTUuMzEyNSwieSI6MTYzfV0=" data-look="classic" marker-end="url(#container_flowchart-v2-pointEnd)"></path><path d="M744.669,190L761.034,209.452C777.399,228.904,810.129,267.807,840.542,287.259C870.956,306.711,899.052,306.711,913.1,306.711L927.148,306.711" id="container-L_C_F_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_C_F_0" data-points="W3sieCI6NzQ0LjY2ODY0NTUyMTg4MSwieSI6MTkwfSx7IngiOjg0Mi44NTkzNzUsInkiOjMwNi43MTA5Mzc1fSx7IngiOjkzMS4xNDg0Mzc1LCJ5IjozMDYuNzEwOTM3NX1d" data-look="classic" marker-end="url(#container_flowchart-v2-pointEnd)"></path><path d="M1048.731,290.871L1068.087,284.845C1087.443,278.818,1126.155,266.764,1156.676,260.738C1187.198,254.711,1209.529,254.711,1220.694,254.711L1231.859,254.711" id="container-L_F_G_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_F_G_0" data-points="W3sieCI6MTA0OC43MzA4Mzc1OTU0MjMzLCJ5IjoyOTAuODcxNDYyNTk1NDIzMn0seyJ4IjoxMTY0Ljg2NzE4NzUsInkiOjI1NC43MTA5Mzc1fSx7IngiOjEyMzUuODU5Mzc1LCJ5IjoyNTQuNzEwOTM3NX1d" data-look="classic" marker-end="url(#container_flowchart-v2-pointEnd)"></path><path d="M1048.731,322.55L1068.087,328.577C1087.443,334.604,1126.155,346.657,1151.012,352.684C1175.87,358.711,1186.872,358.711,1192.374,358.711L1197.875,358.711" id="container-L_F_H_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_F_H_0" data-points="W3sieCI6MTA0OC43MzA4Mzc1OTU0MjMzLCJ5IjozMjIuNTUwNDEyNDA0NTc2OH0seyJ4IjoxMTY0Ljg2NzE4NzUsInkiOjM1OC43MTA5Mzc1fSx7IngiOjEyMDEuODc1LCJ5IjozNTguNzEwOTM3NX1d" data-look="classic" marker-end="url(#container_flowchart-v2-pointEnd)"></path></g><g class="edgeLabels"><g class="edgeLabel"><g class="label" data-id="L_A_B_0" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" data-id="L_B_C_0" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" data-id="L_C_D_0" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" data-id="L_C_E_0" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" data-id="L_C_F_0" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(1164.8671875, 254.7109375)"><g class="label" data-id="L_F_G_0" transform="translate(-12.0078125, -12)"><foreignObject width="24.015625" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>yes</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(1164.8671875, 358.7109375)"><g class="label" data-id="L_F_H_0" transform="translate(-9.3671875, -12)"><foreignObject width="18.734375" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>no</p></span></div></foreignObject></g></g></g><g class="nodes"><g class="node default" id="container-flowchart-A-0" data-look="classic" transform="translate(137.0234375, 163)"><rect class="basic label-container" style="" x="-129.0234375" y="-27" width="258.046875" height="54"></rect><g class="label" style="" transform="translate(-99.0234375, -12)"><rect></rect><foreignObject width="198.046875" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>Any journey reaches a page</p></span></div></foreignObject></g></g><g class="node default" id="container-flowchart-B-1" data-look="classic" transform="translate(446.046875, 163)"><rect class="basic label-container" style="" x="-130" y="-51" width="260" height="102"></rect><g class="label" style="" transform="translate(-100, -36)"><rect></rect><foreignObject width="200" height="72"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 200px; text-align: center; width: 200px;"><span class="nodeLabel"><p>Run accessibility checkpoint<br/>(reusable step)</p></span></div></foreignObject></g></g><g class="node default" id="container-flowchart-C-3" data-look="classic" transform="translate(721.953125, 163)"><rect class="basic label-container" style="" x="-95.90625" y="-27" width="191.8125" height="54"></rect><g class="label" style="" transform="translate(-65.90625, -12)"><rect></rect><foreignObject width="131.8125" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>axe-core analyze()</p></span></div></foreignObject></g></g><g class="node default" id="container-flowchart-D-5" data-look="classic" transform="translate(997.859375, 47)"><rect class="basic label-container" style="" x="-130" y="-39" width="260" height="78"></rect><g class="label" style="" transform="translate(-100, -24)"><rect></rect><foreignObject width="200" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 200px; text-align: center; width: 200px;"><span class="nodeLabel"><p>Attach results to the run report</p></span></div></foreignObject></g></g><g class="node default" id="container-flowchart-E-7" data-look="classic" transform="translate(997.859375, 163)"><rect class="basic label-container" style="" x="-102.546875" y="-27" width="205.09375" height="54"></rect><g class="label" style="" transform="translate(-72.546875, -12)"><rect></rect><foreignObject width="145.09375" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>Persist JSON artifact</p></span></div></foreignObject></g></g><g class="node default" id="container-flowchart-F-9" data-look="classic" transform="translate(997.859375, 306.7109375)"><polygon points="66.7109375,0 133.421875,-66.7109375 66.7109375,-133.421875 0,-66.7109375" class="label-container" transform="translate(-66.2109375, 66.7109375)"></polygon><g class="label" style="" transform="translate(-39.7109375, -12)"><rect></rect><foreignObject width="79.421875" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>Violations?</p></span></div></foreignObject></g></g><g class="node default" id="container-flowchart-G-11" data-look="classic" transform="translate(1308.1875, 254.7109375)"><rect class="basic label-container" style="" x="-72.328125" y="-27" width="144.65625" height="54"></rect><g class="label" style="" transform="translate(-42.328125, -12)"><rect></rect><foreignObject width="84.65625" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>Fail the test</p></span></div></foreignObject></g></g><g class="node default" id="container-flowchart-H-13" data-look="classic" transform="translate(1308.1875, 358.7109375)"><rect class="basic label-container" style="" x="-106.3125" y="-27" width="212.625" height="54"></rect><g class="label" style="" transform="translate(-76.3125, -12)"><rect></rect><foreignObject width="152.625" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>Continue the journey</p></span></div></foreignObject></g></g></g></g></g><defs><filter id="container-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"></feDropShadow></filter></defs><defs><filter id="container-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"></feDropShadow></filter></defs></svg></figure><hr>
+<h2>Step 1 — One reusable, fixture‑backed step</h2>
+<p>The whole scan is a single BDD step that takes the current <code>page</code> (already navigated by whatever journey called it), a page name for reporting, and a device label. Because it&#39;s wired through the suite&#39;s fixtures, it inherits <code>brand</code>, <code>env</code>, and the report‑attachment helpers for free.</p>
+<pre><code class="language-js"><span class="hljs-keyword">import</span> <span class="hljs-title class_">AxeBuilder</span> <span class="hljs-keyword">from</span> <span class="hljs-string">&#x27;@axe-core/playwright&#x27;</span>;
+
+<span class="hljs-keyword">const</span> runAccessibilityTest = <span class="hljs-title class_">Given</span>(
+  <span class="hljs-string">&#x27;Run accessibility tests pageName:{string} device: {string}&#x27;</span>,
+  <span class="hljs-title function_">async</span> ({ page, $testInfo, brand, env }, pageName, device) =&gt; {
+    <span class="hljs-comment">// 1. Scan the page exactly as the user currently sees it</span>
+    <span class="hljs-keyword">const</span> results = <span class="hljs-keyword">await</span> <span class="hljs-keyword">new</span> <span class="hljs-title class_">AxeBuilder</span>({ page }).<span class="hljs-title function_">analyze</span>();
+
+    <span class="hljs-comment">// 2. Persist a machine-readable artifact, keyed by everything that varies</span>
+    <span class="hljs-keyword">await</span> <span class="hljs-title function_">saveAccessibilityReport</span>(brand, env, pageName, device, results);
+
+    <span class="hljs-comment">// 3. Attach violations to the live run report (visible in HTML/trace)</span>
+    <span class="hljs-keyword">await</span> <span class="hljs-title function_">attachJsonDataToTestReport</span>($testInfo, <span class="hljs-string">&#x27;accessibility-scan-results&#x27;</span>, results.<span class="hljs-property">violations</span>);
+
+    <span class="hljs-comment">// 4. The gate: zero violations or the test fails</span>
+    <span class="hljs-title function_">expect</span>(results.<span class="hljs-property">violations</span>).<span class="hljs-title function_">toEqual</span>([]);
+  }
+);</code></pre>
+<p>Two design choices do the heavy lifting:</p>
+<ul>
+<li><strong>It scans the <em>current</em> DOM.</strong> Because the step takes whatever <code>page</code> it&#39;s handed, it tests the page in its real, post‑interaction state — after cookies are accepted, a form is filled, a modal is open — not a cold initial load.</li>
+<li><strong><code>expect(violations).toEqual([])</code> is the gate.</strong> A violation isn&#39;t a warning logged to a file nobody reads; it fails the test like any other assertion. Accessibility becomes non‑optional.</li>
+</ul>
+<hr>
+<h2>Step 2 — Call it two ways: standalone and inline</h2>
+<p>The same step serves both audiences. A dedicated accessibility feature scans key pages in isolation:</p>
+<pre><code class="language-gherkin"><span class="hljs-meta">@accessibility</span> <span class="hljs-meta">@prod</span> <span class="hljs-meta">@qa</span> <span class="hljs-meta">@local</span> <span class="hljs-meta">@preprod</span>
+<span class="hljs-keyword">Feature</span>: accessibility tests for application pages
+
+  <span class="hljs-keyword">Scenario</span> <span class="hljs-keyword">Outline</span>: a11y scan — page: <span class="hljs-string">&quot;&lt;pageName&gt;&quot;</span>, device: <span class="hljs-string">&quot;&lt;device&gt;&quot;</span>
+    <span class="hljs-keyword">Given</span> I access the application start page
+    <span class="hljs-keyword">Given</span> Run accessibility tests pageName:<span class="hljs-string">&quot;&lt;pageName&gt;&quot;</span> device: <span class="hljs-string">&quot;&lt;device&gt;&quot;</span>
+
+    <span class="hljs-keyword">Examples</span>:
+      |<span class="hljs-string"> pageName            </span>|<span class="hljs-string"> device  </span>|
+      |<span class="hljs-string"> application-start   </span>|<span class="hljs-string"> desktop </span>|
+      |<span class="hljs-string"> application-details </span>|<span class="hljs-string"> desktop </span>|</code></pre>
+<p>And a <em>functional</em> journey can drop the same checkpoint in mid‑flow, scanning each page as the user reaches it — accessibility coverage with zero extra navigation cost:</p>
+<pre><code class="language-js"><span class="hljs-keyword">await</span> <span class="hljs-title function_">goToWelcomePage</span>(page);
+<span class="hljs-keyword">await</span> <span class="hljs-title function_">runAccessibilityTest</span>({ page, $testInfo, brand, env }, <span class="hljs-string">&#x27;welcome-page&#x27;</span>, device);
+
+<span class="hljs-keyword">await</span> <span class="hljs-title function_">fillDetailsAndContinue</span>(page);
+<span class="hljs-keyword">await</span> <span class="hljs-title function_">runAccessibilityTest</span>({ page, $testInfo, brand, env }, <span class="hljs-string">&#x27;details-page&#x27;</span>, device);</code></pre>
+<p>This is the payoff of the reusable‑step design: every functional journey you already have is a potential accessibility journey, for free.</p>
+<hr>
+<h2>Step 3 — Tags make a11y a slice of the pipeline, not a special case</h2>
+<p>In a tag‑driven suite, accessibility is just another tag family member. The scenarios carry <code>@accessibility</code> alongside the usual environment tags, so the exact same execution machinery selects them:</p>
+<pre><code class="language-bash"><span class="hljs-comment"># Run only the accessibility slice, preprod, skipping manual-only specs</span>
+npx bddgen --tags <span class="hljs-string">&quot;@accessibility and @preprod and not @manual&quot;</span>
+npx playwright <span class="hljs-built_in">test</span></code></pre>
+<p>And because it&#39;s a tag, it slots straight into the <strong>suite‑as‑data</strong> model that provisions cloud jobs — accessibility gets its own right‑sized batch with no new infrastructure:</p>
+<pre><code class="language-js"><span class="hljs-keyword">const</span> testSuites = {
+  <span class="hljs-attr">accessibility</span>: { <span class="hljs-attr">tags</span>: <span class="hljs-string">&quot;@accessibility&quot;</span>, <span class="hljs-attr">workers</span>: <span class="hljs-number">8</span>, <span class="hljs-attr">retries</span>: <span class="hljs-number">2</span>, <span class="hljs-attr">cpu</span>: <span class="hljs-number">4</span>, <span class="hljs-attr">memory</span>: <span class="hljs-number">8192</span> },
+  <span class="hljs-comment">// ...other functional suites</span>
+};</code></pre>
+<p>No bespoke runner, no separate CI job to maintain. Accessibility runs, retries, reports, and alerts exactly like everything else.</p>
+<hr>
+<h2>Step 4 — Reports as artifacts, not console noise</h2>
+<p>A violation that scrolls past in a log is forgotten by lunch. Two outputs make findings durable and actionable:</p>
+<p><strong>A persisted JSON file per scan</strong>, keyed by every dimension that matters, so results are diffable across runs and comparable across brands/devices:</p>
+<pre><code class="language-js"><span class="hljs-keyword">async</span> <span class="hljs-keyword">function</span> <span class="hljs-title function_">saveAccessibilityReport</span>(<span class="hljs-params">brand, env, pageName, device, results</span>) {
+  <span class="hljs-keyword">const</span> filepath = path.<span class="hljs-title function_">join</span>(
+    reportsDir,
+    <span class="hljs-string">`<span class="hljs-subst">${device}</span>-<span class="hljs-subst">${env}</span>-<span class="hljs-subst">${brand}</span>-<span class="hljs-subst">${pageName}</span>.json`</span>   <span class="hljs-comment">// e.g. desktop-preprod-acme-checkout.json</span>
+  );
+  <span class="hljs-keyword">await</span> <span class="hljs-title function_">ensureDirectoryExistence</span>(filepath);
+  <span class="hljs-keyword">await</span> fs.<span class="hljs-title function_">writeFile</span>(filepath, <span class="hljs-title class_">JSON</span>.<span class="hljs-title function_">stringify</span>(results, <span class="hljs-literal">null</span>, <span class="hljs-number">2</span>));
+}</code></pre>
+<p><strong>An attachment on the live run report</strong>, so a failing test shows <em>which</em> rules failed right next to the trace and screenshot — no hunting through a separate folder.</p>
+<p>The naming convention (<code>device-env-brand-page.json</code>) means a CI archive of these files is a complete, sortable accessibility snapshot of the whole product surface for that run.</p>
+<hr>
+<h2>Step 5 — Tuning the gate without weakening it</h2>
+<p>A zero‑tolerance gate is the goal, but real products have edge cases — a third‑party widget you don&#39;t control, a known issue with a tracked fix. The disciplined ways to handle these, in order of preference:</p>
+<ul>
+<li><strong>Scope the scan</strong> to the part of the page you own, excluding an embedded third‑party region — rather than disabling the whole check.</li>
+<li><strong>Disable a specific rule with a documented reason</strong>, never a blanket suppression. The intent stays visible in the test.</li>
+<li><strong>Tag the known‑failing scenario</strong> so it&#39;s tracked and reportable, not silently deleted.</li>
+</ul>
+<pre><code class="language-js"><span class="hljs-keyword">const</span> results = <span class="hljs-keyword">await</span> <span class="hljs-keyword">new</span> <span class="hljs-title class_">AxeBuilder</span>({ page })
+  .<span class="hljs-title function_">exclude</span>(<span class="hljs-string">&#x27;#third-party-widget&#x27;</span>)   <span class="hljs-comment">// not ours to fix; scan everything else strictly</span>
+  .<span class="hljs-title function_">analyze</span>();</code></pre>
+<p>The principle: narrow the scope explicitly, never lower the bar silently. A suppression with a reason is a decision; a deleted assertion is a blind spot.</p>
+<hr>
+<h2>Lessons learned</h2>
+<ul>
+<li><strong>Make the scan a reusable step, not a script.</strong> A single fixture‑backed step that any scenario can call turns every functional journey into potential accessibility coverage at no extra cost.</li>
+<li><strong>Scan the live DOM, mid‑journey.</strong> Testing the page in its real post‑interaction state finds issues a cold initial‑load scan never will.</li>
+<li><strong>Gate, don&#39;t log.</strong> <code>expect(violations).toEqual([])</code> makes accessibility a build‑failing assertion instead of a report nobody opens.</li>
+<li><strong>Reuse the tag pipeline.</strong> <code>@accessibility</code> plugs straight into the same selection, parallelism, retry, and cloud‑provisioning machinery as functional tests — zero bespoke infrastructure.</li>
+<li><strong>Persist keyed JSON artifacts.</strong> Reports named by device/env/brand/page are diffable, archivable, and give a full snapshot of the product surface per run.</li>
+<li><strong>Narrow scope explicitly; never weaken the gate silently.</strong> Exclude a region or disable a rule <em>with a reason</em> — a documented decision beats a deleted assertion.</li>
+</ul>
+<p>Accessibility tooling has been solved for years; <code>axe-core</code> is rock‑solid. What fails is integration. Fold the scan into the same tagged, fixture‑backed, gated, reported pipeline your functional tests already run in, and accessibility stops being a periodic chore and becomes a property the suite continuously enforces.</p>
+<hr>
+<p><em>Written from real‑world experience building a large, multi‑environment Playwright suite. All page names, brands, and examples are generic illustrations of the patterns described.</em></p>
+
+      </article>
+      
+    <aside class="author-bio">
+      <div class="author-bio-text">
+        <p class="author-name">Laxminarayana Boga</p>
+        <p class="author-role">Lead Quality Engineer & SDET · 13 years in test automation, cloud-native CI/CD, and AI-first engineering. London, UK.</p>
+        <div class="author-links">
+          <a href="https://medium.com/@laxminarayanaboga4079" target="_blank" rel="noopener">Medium</a>
+          <a href="https://linkedin.com/in/laxminarayana-boga-770b1456" target="_blank" rel="noopener">LinkedIn</a>
+          <a href="https://github.com/laxminarayanaboga" target="_blank" rel="noopener">GitHub</a>
+          <a href="../index.html">Portfolio</a>
+        </div>
+      </div>
+    </aside>
+      
+    <nav class="series-nav" aria-label="Series navigation">
+      <a class="series-prev" href="network-interception-contract-validation.html">← Beyond Mocking: Capturing Real Network Traffic and Validating Response Contracts</a>
+      <a class="series-all" href="index.html">All articles</a>
+      <a class="series-next" href="lighthouse-k6-quality-gates.html">Quality Gates Beyond Functional: Lighthouse and K6 in One Tag‑Driven Pipeline →</a>
+    </nav>
+    </div>
+  </main>
+
+  <footer class="footer" id="contact">
+    <div class="footer-container">
+      <h2>Get in touch</h2>
+      <p>Open to senior engineering roles, consulting, and interesting product conversations.</p>
+      <div class="footer-links">
+        <a href="mailto:laxminarayanaboga4079@gmail.com" title="Email"><i class="fa-solid fa-envelope"></i></a>
+        <a href="https://linkedin.com/in/laxminarayana-boga-770b1456" target="_blank" rel="noopener" title="LinkedIn"><i class="fa-brands fa-linkedin-in"></i></a>
+        <a href="https://github.com/laxminarayanaboga" target="_blank" rel="noopener" title="GitHub"><i class="fa-brands fa-github"></i></a>
+        <a href="https://medium.com/@laxminarayanaboga4079" target="_blank" rel="noopener" title="Medium">
+          <svg viewBox="0 0 24 24" width="1.1em" height="1.1em" fill="currentColor" aria-hidden="true" style="vertical-align:-0.1em;">
+            <path d="M13.54 12a6.8 6.8 0 0 1-6.77 6.82A6.8 6.8 0 0 1 0 12a6.8 6.8 0 0 1 6.77-6.82A6.8 6.8 0 0 1 13.54 12zM20.96 12c0 3.54-1.51 6.42-3.38 6.42-1.87 0-3.39-2.88-3.39-6.42s1.52-6.42 3.39-6.42 3.38 2.88 3.38 6.42M24 12c0 3.17-.53 5.75-1.19 5.75-.66 0-1.19-2.58-1.19-5.75s.53-5.75 1.19-5.75C23.47 6.25 24 8.83 24 12z" />
+          </svg>
+        </a>
+      </div>
+      <p class="footer-copy">© 2026 Laxminarayana Boga</p>
+    </div>
+  </footer>
+
+  <script>
+    window.addEventListener('scroll', () => {
+      document.getElementById('nav').classList.toggle('nav--scrolled', window.scrollY > 20);
+    });
+    const t = document.getElementById('navToggle');
+    if (t) t.addEventListener('click', () =>
+      document.getElementById('navLinks').classList.toggle('nav-links--open'));
+  </script>
+</body>
+</html>

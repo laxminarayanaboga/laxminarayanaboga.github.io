@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="A series on testing at scale: Playwright-BDD architecture, fixtures, tag-driven execution, cloud CI/CD, and quality gates. By Laxminarayana Boga.">
+  <meta property="og:title" content="Writing — Laxminarayana Boga">
+  <meta property="og:description" content="A series on testing at scale: Playwright-BDD architecture, fixtures, tag-driven execution, cloud CI/CD, and quality gates. By Laxminarayana Boga.">
+  <meta property="og:type" content="article">
+  
+  <title>Writing — Laxminarayana Boga</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://kit.fontawesome.com/e8e3708268.js" crossorigin="anonymous"></script>
+  <link rel="stylesheet" href="../style.css">
+  <link rel="stylesheet" href="../articles/assets/article.css">
+</head>
+<body>
+
+  <nav class="nav" id="nav">
+    <div class="nav-container">
+      <a href="../index.html" class="nav-logo">LB</a>
+      <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation">
+        <span></span><span></span><span></span>
+      </button>
+      <ul class="nav-links" id="navLinks">
+        <li><a href="../index.html#about">About</a></li>
+        <li><a href="../index.html#experience">Experience</a></li>
+        <li><a href="../index.html#projects">Projects</a></li>
+        <li><a href="index.html">Writing</a></li>
+        <li><a href="../index.html#contact">Contact</a></li>
+      </ul>
+    </div>
+  </nav>
+  <header class="writing-hero">
+    <div class="section-container">
+      <p class="section-title">Writing</p>
+      <h1 class="writing-title">Testing at Scale</h1>
+      <p class="writing-intro">
+        A practical series on building and running large test-automation suites — Playwright-BDD
+        architecture, fixtures as a runtime system, tag-driven execution, cloud-native CI/CD, and
+        quality gates beyond the functional. Drawn from real-world experience; all examples are
+        generic illustrations of the patterns.
+      </p>
+      <p class="writing-intro">
+        Each article is also published on
+        <a href="https://medium.com/@laxminarayanaboga4079" target="_blank" rel="noopener">Medium</a>.
+      </p>
+    </div>
+  </header>
+  <main class="writing-list">
+    <div class="section-container">
+      <div class="article-cards">
+
+        <a class="article-card" href="scaling-playwright-bdd.html">
+          <span class="article-card-num">01</span>
+          <span class="article-card-body">
+            <span class="article-card-title">Scaling Playwright‑BDD to 3,000+ Tests Without Losing Your Mind</span>
+            <span class="article-card-blurb">How we structured fixtures, steps, and tags to keep a large Behaviour‑Driven test suite fast, readable, and maintainable.</span>
+            <span class="article-card-cta">Read article →</span>
+          </span>
+        </a>
+
+        <a class="article-card" href="scalable-test-data-management.html">
+          <span class="article-card-num">02</span>
+          <span class="article-card-body">
+            <span class="article-card-title">Highly Scalable Test Data Management in Playwright</span>
+            <span class="article-card-blurb">How we tie thousands of test users and hundreds of journey datasets to the right test — automatically — using fixtures, not glue code.</span>
+            <span class="article-card-cta">Read article →</span>
+          </span>
+        </a>
+
+        <a class="article-card" href="fixtures-as-a-runtime-system.html">
+          <span class="article-card-num">03</span>
+          <span class="article-card-body">
+            <span class="article-card-title">Playwright Fixtures as a Runtime System: Five Patterns Beyond `page`</span>
+            <span class="article-card-blurb">Scopes, teardown‑only guards, cached sessions, and self‑built browser contexts — the fixture mechanics that quietly run a 3,000‑test suite.</span>
+            <span class="article-card-cta">Read article →</span>
+          </span>
+        </a>
+
+        <a class="article-card" href="tag-driven-test-execution.html">
+          <span class="article-card-num">04</span>
+          <span class="article-card-body">
+            <span class="article-card-title">Tag‑Driven Test Execution: Turning 3,000 Playwright Tests Into a Schedulable Pipeline</span>
+            <span class="article-card-blurb">How a small tag vocabulary and a &quot;suite‑as‑data&quot; model let us slice thousands of tests into precisely‑tuned, parallelisable batches.</span>
+            <span class="article-card-cta">Read article →</span>
+          </span>
+        </a>
+
+        <a class="article-card" href="cicd-aws-terraform-pipeline.html">
+          <span class="article-card-num">05</span>
+          <span class="article-card-body">
+            <span class="article-card-title">Running Playwright in the Cloud: A Reusable CI/CD Pipeline with Docker, Terraform &amp; AWS</span>
+            <span class="article-card-blurb">One container image, one suite‑as‑data definition, and an infrastructure‑as‑code pipeline that fans thousands of tests across the cloud — portable to GitHub Actions, GCP, or anywhere else.</span>
+            <span class="article-card-cta">Read article →</span>
+          </span>
+        </a>
+
+        <a class="article-card" href="time-travel-testing.html">
+          <span class="article-card-num">06</span>
+          <span class="article-card-body">
+            <span class="article-card-title">Time‑Travel Testing in Playwright: Automating Date‑Sensitive Flows</span>
+            <span class="article-card-blurb">Some bugs only appear on the last day of the month, on a leap year, or 30 days after sign‑up. Here's how to make those moments reproducible by controlling the clock — and how to put time back when the test ends.</span>
+            <span class="article-card-cta">Read article →</span>
+          </span>
+        </a>
+
+        <a class="article-card" href="database-side-effect-assertions.html">
+          <span class="article-card-num">07</span>
+          <span class="article-card-body">
+            <span class="article-card-title">Don't Just Test the Screen: Verifying Database &amp; Message Side Effects in Playwright</span>
+            <span class="article-card-blurb">A green UI assertion can hide a broken backend. Here's how to drive the front end with Playwright and then assert on the database and message store to prove the *system* actually did the right thing.</span>
+            <span class="article-card-cta">Read article →</span>
+          </span>
+        </a>
+
+        <a class="article-card" href="network-interception-contract-validation.html">
+          <span class="article-card-num">08</span>
+          <span class="article-card-body">
+            <span class="article-card-title">Beyond Mocking: Capturing Real Network Traffic and Validating Response Contracts</span>
+            <span class="article-card-blurb">Most teams use request interception to *fake* responses. The more powerful use is the opposite — let the real traffic flow, capture it, and assert that the page actually called the right APIs and got the right answers.</span>
+            <span class="article-card-cta">Read article →</span>
+          </span>
+        </a>
+
+        <a class="article-card" href="accessibility-testing-at-scale.html">
+          <span class="article-card-num">09</span>
+          <span class="article-card-body">
+            <span class="article-card-title">Accessibility Testing at Scale: From One‑Off axe Script to a Tagged, Gated, Reported Suite</span>
+            <span class="article-card-blurb">A single `axe-core` script in a corner of the repo is easy to ignore. Wiring accessibility checks into the *same* tag‑driven, fixture‑backed, reported pipeline as your functional tests is what makes them actually stick.</span>
+            <span class="article-card-cta">Read article →</span>
+          </span>
+        </a>
+
+        <a class="article-card" href="lighthouse-k6-quality-gates.html">
+          <span class="article-card-num">10</span>
+          <span class="article-card-body">
+            <span class="article-card-title">Quality Gates Beyond Functional: Lighthouse and K6 in One Tag‑Driven Pipeline</span>
+            <span class="article-card-blurb">Functional tests tell you the feature works. They say nothing about whether the page is *fast enough* or the API *holds up under load*. Here's how performance and budget checks become first‑class, tagged, gated members of the same suite — not separate tools nobody runs.</span>
+            <span class="article-card-cta">Read article →</span>
+          </span>
+        </a>
+
+        <a class="article-card" href="white-label-multi-tenant-testing.html">
+          <span class="article-card-num">11</span>
+          <span class="article-card-body">
+            <span class="article-card-title">One Suite, Many Brands: A White‑Label / Multi‑Tenant Testing Strategy</span>
+            <span class="article-card-blurb">When the same product ships under several brands, the naive answers are &quot;copy the suite per brand&quot; or &quot;test only one and hope.&quot; Both are wrong. Here's how a single suite covers many tenants through shared journeys, a layered data‑resolution fallback, and per‑tenant overrides.</span>
+            <span class="article-card-cta">Read article →</span>
+          </span>
+        </a>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer" id="contact">
+    <div class="footer-container">
+      <h2>Get in touch</h2>
+      <p>Open to senior engineering roles, consulting, and interesting product conversations.</p>
+      <div class="footer-links">
+        <a href="mailto:laxminarayanaboga4079@gmail.com" title="Email"><i class="fa-solid fa-envelope"></i></a>
+        <a href="https://linkedin.com/in/laxminarayana-boga-770b1456" target="_blank" rel="noopener" title="LinkedIn"><i class="fa-brands fa-linkedin-in"></i></a>
+        <a href="https://github.com/laxminarayanaboga" target="_blank" rel="noopener" title="GitHub"><i class="fa-brands fa-github"></i></a>
+        <a href="https://medium.com/@laxminarayanaboga4079" target="_blank" rel="noopener" title="Medium">
+          <svg viewBox="0 0 24 24" width="1.1em" height="1.1em" fill="currentColor" aria-hidden="true" style="vertical-align:-0.1em;">
+            <path d="M13.54 12a6.8 6.8 0 0 1-6.77 6.82A6.8 6.8 0 0 1 0 12a6.8 6.8 0 0 1 6.77-6.82A6.8 6.8 0 0 1 13.54 12zM20.96 12c0 3.54-1.51 6.42-3.38 6.42-1.87 0-3.39-2.88-3.39-6.42s1.52-6.42 3.39-6.42 3.38 2.88 3.38 6.42M24 12c0 3.17-.53 5.75-1.19 5.75-.66 0-1.19-2.58-1.19-5.75s.53-5.75 1.19-5.75C23.47 6.25 24 8.83 24 12z" />
+          </svg>
+        </a>
+      </div>
+      <p class="footer-copy">© 2026 Laxminarayana Boga</p>
+    </div>
+  </footer>
+
+  <script>
+    window.addEventListener('scroll', () => {
+      document.getElementById('nav').classList.toggle('nav--scrolled', window.scrollY > 20);
+    });
+    const t = document.getElementById('navToggle');
+    if (t) t.addEventListener('click', () =>
+      document.getElementById('navLinks').classList.toggle('nav-links--open'));
+  </script>
+</body>
+</html>

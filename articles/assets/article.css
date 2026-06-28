@@ -1,0 +1,291 @@
+/* Article + Writing-index styles. Builds on the site's style.css tokens. */
+
+:root {
+  --code-bg: #f8fafc;
+  --code-border: #e2e8f0;
+  --article-width: 760px;
+}
+
+/* ---- Writing index (series landing) ---- */
+
+.writing-hero {
+  background: var(--color-bg-alt);
+  border-bottom: 1px solid var(--color-border);
+  padding-top: 2rem;
+}
+
+.writing-title {
+  font-size: clamp(2rem, 5vw, 2.75rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  margin-bottom: 1.25rem;
+}
+
+.writing-intro {
+  font-size: 1.02rem;
+  color: var(--color-text-muted);
+  max-width: var(--article-width);
+  line-height: 1.8;
+  margin-bottom: 1rem;
+}
+
+.writing-intro a { color: var(--color-accent); font-weight: 500; }
+.writing-intro a:hover { text-decoration: underline; }
+
+.article-cards { display: flex; flex-direction: column; gap: 1rem; }
+
+.article-card {
+  display: flex;
+  gap: 1.25rem;
+  align-items: flex-start;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 1.5rem;
+  transition: box-shadow 0.2s, border-color 0.2s, transform 0.2s;
+}
+
+.article-card:hover {
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.07);
+  border-color: #cbd5e1;
+  transform: translateY(-2px);
+}
+
+.article-card-num {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-accent);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  opacity: 0.85;
+}
+
+.article-card-body { display: flex; flex-direction: column; gap: 0.4rem; }
+
+.article-card-title { font-size: 1.1rem; font-weight: 600; color: var(--color-text); line-height: 1.35; }
+.article-card-blurb { font-size: 0.92rem; color: var(--color-text-muted); line-height: 1.65; }
+.article-card-cta { font-size: 0.85rem; font-weight: 500; color: var(--color-accent); margin-top: 0.2rem; }
+
+/* ---- Article page shell ---- */
+
+.article { padding: 3rem 1.5rem 4rem; }
+
+.article-container { max-width: var(--article-width); margin: 0 auto; }
+
+.article-eyebrow {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+  margin-bottom: 1.25rem;
+}
+
+.article-eyebrow a { color: inherit; }
+.article-eyebrow a:hover { text-decoration: underline; }
+
+/* ---- Medium cross-post banner ---- */
+
+.medium-banner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--color-tag-bg);
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  margin-bottom: 2.5rem;
+}
+
+.medium-banner .medium-link { color: var(--color-accent); font-weight: 600; white-space: nowrap; }
+.medium-banner .medium-link:hover { text-decoration: underline; }
+
+/* ---- Article typography ---- */
+
+.article-content { font-size: 1.05rem; line-height: 1.8; color: #334155; }
+
+.article-content > h1:first-child,
+.article-content h1 {
+  font-size: clamp(1.8rem, 4.5vw, 2.4rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: var(--color-text);
+  margin: 0 0 1.5rem;
+}
+
+.article-content h2 {
+  font-size: 1.45rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--color-text);
+  margin: 2.75rem 0 1rem;
+  padding-top: 0.5rem;
+}
+
+.article-content h3 {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin: 2rem 0 0.75rem;
+}
+
+.article-content p { margin: 0 0 1.25rem; }
+
+.article-content a { color: var(--color-accent); text-decoration: underline; text-underline-offset: 2px; }
+.article-content a:hover { color: var(--color-accent-dark); }
+
+.article-content ul, .article-content ol { margin: 0 0 1.25rem; padding-left: 1.4rem; }
+.article-content ul { list-style: disc; }
+.article-content ol { list-style: decimal; }
+.article-content li { margin-bottom: 0.5rem; }
+.article-content li::marker { color: var(--color-text-muted); }
+
+.article-content strong { color: var(--color-text); font-weight: 600; }
+
+.article-content blockquote {
+  border-left: 3px solid var(--color-accent);
+  background: var(--color-bg-alt);
+  margin: 0 0 1.5rem;
+  padding: 0.85rem 1.25rem;
+  border-radius: 0 8px 8px 0;
+  color: var(--color-text-muted);
+  font-size: 1rem;
+}
+
+.article-content blockquote p:last-child { margin-bottom: 0; }
+
+/* The first blockquote (subtitle) reads as a deck */
+.article-content > blockquote:first-of-type {
+  font-size: 1.15rem;
+  font-style: italic;
+  color: #475569;
+  border-left-color: #cbd5e1;
+  background: transparent;
+  padding-left: 1.1rem;
+}
+
+.article-content hr { border: none; border-top: 1px solid var(--color-border); margin: 2.5rem 0; }
+
+/* ---- Code ---- */
+
+.article-content code {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+  background: var(--code-bg);
+  border: 1px solid var(--code-border);
+  border-radius: 4px;
+  padding: 0.1em 0.4em;
+}
+
+.article-content pre {
+  background: var(--code-bg);
+  border: 1px solid var(--code-border);
+  border-radius: 10px;
+  padding: 1.1rem 1.25rem;
+  overflow-x: auto;
+  margin: 0 0 1.5rem;
+  line-height: 1.6;
+}
+
+.article-content pre code {
+  font-size: 0.86rem;
+  background: none;
+  border: none;
+  padding: 0;
+  color: #1e293b;
+}
+
+/* ---- Tables ---- */
+
+.article-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 1.5rem;
+  font-size: 0.92rem;
+}
+
+.article-content th, .article-content td {
+  border: 1px solid var(--color-border);
+  padding: 0.6rem 0.85rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.article-content th { background: var(--color-bg-alt); font-weight: 600; color: var(--color-text); }
+.article-content tr:nth-child(even) td { background: #fcfdfe; }
+
+/* ---- Mermaid diagrams (inlined SVG) ---- */
+
+.diagram {
+  margin: 0 0 1.75rem;
+  padding: 1.25rem;
+  background: var(--color-bg-alt);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  text-align: center;
+  overflow-x: auto;
+}
+
+.diagram svg { max-width: 100%; height: auto; display: inline-block; }
+
+/* ---- Author bio + series nav ---- */
+
+.author-bio {
+  display: flex;
+  gap: 1rem;
+  margin: 3rem 0 2rem;
+  padding: 1.5rem;
+  background: var(--color-bg-alt);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+}
+
+.author-name { font-weight: 600; color: var(--color-text); margin-bottom: 0.25rem; }
+.author-role { font-size: 0.9rem; color: var(--color-text-muted); line-height: 1.65; margin-bottom: 0.75rem; }
+.author-links { display: flex; flex-wrap: wrap; gap: 1rem; }
+.author-links a { font-size: 0.875rem; font-weight: 500; color: var(--color-accent); }
+.author-links a:hover { text-decoration: underline; }
+
+.series-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--color-border);
+  padding-top: 1.5rem;
+  font-size: 0.9rem;
+}
+
+.series-nav a { color: var(--color-accent); font-weight: 500; max-width: 45%; }
+.series-nav a:hover { text-decoration: underline; }
+.series-all { color: var(--color-text-muted) !important; }
+.series-prev { text-align: left; }
+.series-next { text-align: right; margin-left: auto; }
+
+/* ---- highlight.js — light theme tuned to the site palette ---- */
+
+.hljs-comment, .hljs-quote { color: #94a3b8; font-style: italic; }
+.hljs-keyword, .hljs-selector-tag, .hljs-built_in, .hljs-name, .hljs-tag { color: #7c3aed; }
+.hljs-string, .hljs-attr, .hljs-template-tag, .hljs-addition, .hljs-regexp { color: #047857; }
+.hljs-number, .hljs-literal, .hljs-type, .hljs-meta { color: #b45309; }
+.hljs-title, .hljs-section, .hljs-title.function_, .hljs-function .hljs-title { color: #2563eb; }
+.hljs-attribute, .hljs-variable, .hljs-template-variable, .hljs-property { color: #0f766e; }
+.hljs-symbol, .hljs-bullet, .hljs-link { color: #db2777; }
+.hljs-deletion { color: #dc2626; }
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: 700; }
+
+/* ---- Responsive ---- */
+
+@media (max-width: 768px) {
+  .article { padding: 2rem 1.25rem 3rem; }
+  .article-content { font-size: 1rem; }
+  .series-nav a { max-width: 100%; }
+  .article-card { flex-direction: column; gap: 0.5rem; padding: 1.25rem; }
+}
