@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="canonical" href="https://laxminarayanaboga.github.io/articles/time-travel-testing.html">
+  <title>Time‑Travel Testing in Playwright: Automating Date‑Sensitive Flows</title>
+</head>
+<body>
+  <article>
+<h1>Time‑Travel Testing in Playwright: Automating Date‑Sensitive Flows</h1>
+<blockquote>
+<p>Some bugs only appear on the last day of the month, on a leap year, or 30 days after sign‑up. Here&#39;s how to make those moments reproducible by controlling the clock — and how to put time back when the test ends.</p>
+</blockquote>
+<p>A surprising amount of software behaviour depends on <em>what day it is</em>. Billing cycles, subscription renewals, free‑trial expiries, statement generation, &quot;due in 7 days&quot; reminders, weekend vs weekday logic, month‑end rollups — none of these can be tested honestly by waiting for the calendar to cooperate. You need to <strong>travel in time</strong>.</p>
+<p>This article covers a pragmatic time‑travel technique for end‑to‑end Playwright tests: shifting the <strong>host system clock</strong> so the whole stack — browser, app, and backend — agrees it&#39;s a different day, then guaranteeing the clock is restored no matter how the test ends.</p>
+<blockquote>
+<p>There are two flavours of time control. We&#39;ll start with the lightweight in‑browser approach, then move to the heavyweight system‑clock approach for true full‑stack date travel.</p>
+</blockquote>
+<hr>
+<h2>Two ways to fake time (and when each fails)</h2>
+<p><strong>1. Browser‑only mocking.</strong> Playwright can freeze or shift the clock <em>inside the page</em>:</p>
+<pre><code>await page.clock.setFixedTime(new Date(&quot;2026-01-31T09:00:00&quot;));</code></pre>
+<p>This is fast, isolated, and perfect when the date logic lives in the <strong>front end</strong> — a countdown, a &quot;renews on&quot; label computed client‑side, relative timestamps.</p>
+<p>But it has a hard limit: it only fools <code>Date</code> in the browser tab. The moment your <em>backend</em> stamps a record with its own server time, or a downstream service decides &quot;today is the 31st,&quot; the illusion breaks. The page thinks it&#39;s month‑end; the server disagrees.</p>
+<p><strong>2. System‑clock travel.</strong> For genuinely full‑stack date behaviour — where the <em>server</em> must believe it&#39;s a different day — you shift the clock of the machine the whole stack runs on. Heavier and more invasive, but it&#39;s the only thing that makes the entire system agree on &quot;now.&quot;</p>
+<p>The rest of this article is about doing (2) safely.</p>
+<hr>
+<h2>Shifting the host clock from a test helper</h2>
+<p>In an environment where the app, services, and tests share a host (a local dev box or a self‑contained CI container), a small helper can set the OS date by shelling out to the system:</p>
+<pre><code>const { exec } = require(&quot;child_process&quot;);
+const util = require(&quot;util&quot;);
+const execAsync = util.promisify(exec);
+
+export async function setSystemDate(dateString) {
+  // dateString: &quot;YYYY-MM-DD&quot;
+  const [year, month, day] = dateString.split(&quot;-&quot;);
+
+  // Apply the new date via the OS date command, then let services settle
+  await applyOsDate({ year, month, day });
+  await wait(5000); // give the stack a moment to observe the new clock
+
+  // Always verify the change actually took effect
+  const now = await readOsDate();
+  console.log(`System date is now: ${now}`);
+}</code></pre>
+<p>Two non‑obvious but important details:</p>
+<ul>
+<li><strong>Settle, then verify.</strong> After changing the clock, wait briefly and <em>read it back</em>. Date changes aren&#39;t always instantaneous, and a silent failure here produces baffling test results (&quot;why is it still yesterday?&quot;). Verifying turns a heisenbug into a clear log line.</li>
+<li><strong>Treat it as environment mutation, not test data.</strong> Changing the host clock affects <em>everything</em> on that host — every parallel worker, every service. That has consequences we&#39;ll address head‑on below.</li>
+</ul>
+<p>Exposed as a single helper, the test reads cleanly:</p>
+<pre><code>test(&quot;invoice is generated on the last day of the month&quot;, async ({ page }) =&gt; {
+  await setSystemDate(&quot;2026-01-31&quot;);
+  await triggerBillingRun(page);
+  await expectInvoiceVisible(page);
+});</code></pre>
+<hr>
+<h2>The real problem: putting time back</h2>
+<p>Here&#39;s the trap. The test above <em>works</em> — until it fails halfway through, or someone adds an early <code>return</code>, and the clock is left in the past. Now every subsequent test on that host is silently running in the wrong year. One forgotten restore poisons the entire run.</p>
+<p>A <code>try/finally</code> helps, but it&#39;s easy to forget and easy to bypass. The robust answer is a <strong>teardown‑only fixture</strong> that restores the real date <em>after every test that touches time</em>, guaranteed, pass or fail:</p>
+<pre><code>restoreSystemClock: async ({}, use) =&gt; {
+  await use(new DoNothing());        // setup: hand back a no-op
+  const today = new Date().toISOString().split(&quot;T&quot;)[0];
+  await setSystemDate(today);        // teardown: ALWAYS restores real date
+},</code></pre>
+<p>A date‑sensitive test opts into the guarantee simply by <strong>listing the fixture</strong> — it never writes cleanup code:</p>
+<pre><code>test(&quot;trial expires 30 days after signup&quot;, async ({ page, restoreSystemClock }) =&gt; {
+  await signUp(page);
+  await setSystemDate(daysFromNow(30)); // jump forward
+  await expectTrialExpired(page);
+  // no restore here — the fixture resets the clock on teardown, even on failure
+});</code></pre>
+<p>Because Playwright runs fixture teardown in reverse order regardless of outcome, the clock is <em>always</em> put back. This converts &quot;remember to undo your time change&quot; from a code‑review hope into a structural guarantee.</p>
+<figure><img src="https://laxminarayanaboga.github.io/articles/assets/diagrams/time-travel-testing-1.png" alt="Diagram: Time‑Travel Testing in Playwright: Automating Date‑Sensitive Flows (1)"></figure><hr>
+<h2>Synchronising on server time, not local time</h2>
+<p>Once the <em>server</em> owns &quot;now,&quot; your assertions must trust the <em>server&#39;s</em> clock, not the test process&#39;s. A subtle but real source of flakiness is reading <code>new Date()</code> in the test and comparing it to a timestamp the server produced moments later — clock skew of even a second or two breaks &quot;is this after that?&quot; checks.</p>
+<p>The fix is to anchor on server time explicitly:</p>
+<pre><code>noteServerTime: async ({ request }, use, runTimeCache) =&gt; {
+  const serverNow = await getServerTime(request); // ask the app, not the OS
+  runTimeCache.notedTime = serverNow;
+  await use();
+},</code></pre>
+<pre><code>test(&quot;reminder fires after the due date&quot;, async ({ page, request }) =&gt; {
+  const before = await getServerTime(request);   // server's clock
+  await advanceSystemDateBy({ days: 8 });
+  await triggerReminderJob(page);
+  const stamped = await readReminderTimestamp(page);
+  expect(stamped).toBeGreaterThan(before);        // compare server-to-server
+});</code></pre>
+<blockquote>
+<p>Rule of thumb for date tests: <strong>whoever owns the source of truth for &quot;now&quot; is who you compare against.</strong> If the backend stamps records, read the backend&#39;s clock — never assume the test runner&#39;s clock matches.</p>
+</blockquote>
+<hr>
+<h2>Keeping clock‑travel tests off the parallel highway</h2>
+<p>Mutating a shared host clock is fundamentally <strong>global</strong>: it affects every test running on that host simultaneously. Two tests time‑travelling to different dates in parallel will corrupt each other. So these tests must be treated as a special, serialised class:</p>
+<ul>
+<li><strong>Isolate them.</strong> Run clock‑sensitive tests with a single worker, or pin them to a dedicated execution slice that never overlaps with others (the per‑suite concurrency model: wide workers for independent tests, <em>one</em> worker for time‑travel flows).</li>
+<li><strong>Tag them</strong> so they can be selected, scheduled, and <em>excluded</em> deliberately — you don&#39;t want a date‑shifting test sneaking into a wide parallel batch.</li>
+<li><strong>Always pair them with the restore fixture</strong>, so even a crash leaves the next suite a clean clock.</li>
+</ul>
+<p>This is the price of full‑stack time travel: it buys you honest end‑to‑end date behaviour, at the cost of giving up parallelism for that slice. For the handful of genuinely date‑critical journeys, it&#39;s a trade worth making — and for everything else, the lightweight in‑browser <code>page.clock</code> approach keeps its parallelism.</p>
+<hr>
+<h2>Lessons learned</h2>
+<ul>
+<li><strong>Pick the right altitude.</strong> In‑browser <code>page.clock</code> for front‑end date logic; system‑clock travel only when the <em>server</em> must agree on the date.</li>
+<li><strong>Settle and verify after changing the clock.</strong> A read‑back log line turns silent date failures into obvious ones.</li>
+<li><strong>Make restoration structural, not optional.</strong> A teardown‑only fixture guarantees the clock is reset on pass, fail, or crash — the single most important safeguard.</li>
+<li><strong>Compare against the clock that owns the truth.</strong> If the backend stamps &quot;now,&quot; read the backend&#39;s time; never trust cross‑process clock equality.</li>
+<li><strong>Serialise and tag clock‑travel tests.</strong> Global state can&#39;t run in parallel — isolate it, label it, and keep it out of wide batches.</li>
+</ul>
+<p>Date‑sensitive behaviour is some of the highest‑value, lowest‑covered surface area in most applications. With a small clock helper, a teardown guard, and a bit of execution discipline, those once‑a‑month and once‑a‑year code paths become tests you can run any day you like.</p>
+<hr>
+<p><em>Written from real‑world experience building a large, multi‑environment Playwright suite. All names, values, and examples are generic illustrations of the patterns described.</em></p>
+
+    <hr>
+    <p><em>Originally published at <a href="https://laxminarayanaboga.github.io/articles/time-travel-testing.html">https://laxminarayanaboga.github.io/articles/time-travel-testing.html</a></em></p>
+  </article>
+</body>
+</html>

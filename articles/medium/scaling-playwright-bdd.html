@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="canonical" href="https://laxminarayanaboga.github.io/articles/scaling-playwright-bdd.html">
+  <title>Scaling Playwright‑BDD to 3,000+ Tests Without Losing Your Mind</title>
+</head>
+<body>
+  <article>
+<h1>Scaling Playwright‑BDD to 3,000+ Tests Without Losing Your Mind</h1>
+<blockquote>
+<p>How we structured fixtures, steps, and tags to keep a large Behaviour‑Driven test suite fast, readable, and maintainable.</p>
+</blockquote>
+<p>Most teams that adopt Behaviour‑Driven Development (BDD) start with a handful of <code>.feature</code> files and a warm feeling of &quot;our tests read like English now.&quot; Then the suite grows. A few hundred scenarios in, the cracks appear: duplicated step definitions, a single 2,000‑line &quot;world&quot; object, flaky shared state, and a CI run that takes longer than the lunch break it was supposed to fit into.</p>
+<p>This article is about the patterns that let a single repository carry <strong>3,000+ tests</strong> on top of <a href="https://github.com/vitalets/playwright-bdd">playwright-bdd</a> while staying fast and maintainable. It is deliberately framework‑focused — no product specifics, just the architecture.</p>
+<p>If you already use Playwright but write your tests in raw <code>test()</code> blocks, or you use Cucumber.js and envy Playwright&#39;s tooling, this is the bridge.</p>
+<hr>
+<h2>Why Playwright‑BDD instead of Cucumber.js?</h2>
+<p>Classic Cucumber.js gives you Gherkin and step definitions, but you bolt on your own browser driver, your own parallelism, and your own reporting. Playwright‑BDD flips the model: it <strong>generates native Playwright test files from your <code>.feature</code> files</strong>, then hands execution back to the Playwright runner.</p>
+<p>That single design decision is what makes scale possible. You keep the business‑readable Gherkin layer, but underneath you inherit everything the Playwright runner already does well:</p>
+<ul>
+<li>True parallel execution with workers</li>
+<li>Auto‑waiting and web‑first assertions</li>
+<li>Trace Viewer, video, and screenshots on failure</li>
+<li>Built‑in sharding and retries</li>
+<li>The <code>fixtures</code> dependency‑injection system (the real hero of this story)</li>
+</ul>
+<figure><img src="https://laxminarayanaboga.github.io/articles/assets/diagrams/scaling-playwright-bdd-1.png" alt="Diagram: Scaling Playwright‑BDD to 3,000+ Tests Without Losing Your Mind (1)"></figure><p>The crucial mental model: <strong><code>bddgen</code> is a build step.</strong> It runs before <code>playwright test</code>, transforming Gherkin into real spec files in a generated folder. You never edit those files; you regenerate them. Your CI command is always two stages:</p>
+<pre><code>npx bddgen --tags &quot;@smoke and not @manual&quot;
+npx playwright test --project=chromium</code></pre>
+<hr>
+<h2>The configuration that ties it together</h2>
+<p>Everything starts in <code>playwright.config.js</code>. <code>defineBddConfig</code> tells the generator three things: where the features live, where the steps live, and which test object (with your fixtures) to import.</p>
+<pre><code>import { defineConfig } from &quot;@playwright/test&quot;;
+import { defineBddConfig } from &quot;playwright-bdd&quot;;
+
+const testDir = defineBddConfig({
+  features: &quot;tests/features/**/*.feature&quot;,
+  importTestFrom: &quot;tests/fixtures/fixtures.js&quot;,
+  steps: [&quot;tests/steps/**/*.js&quot;, &quot;tests/fixtures/fixtures.js&quot;],
+});
+
+export default defineConfig({
+  testDir, // &lt;-- the generated specs, not your features
+  fullyParallel: true,
+  workers: process.env.CI ? 4 : 2,
+  retries: process.env.CI ? 1 : 0,
+  reporter: [
+    [&quot;html&quot;],
+    [&quot;json&quot;, { outputFile: &quot;report.json&quot; }],
+    [&quot;list&quot;],
+  ],
+});</code></pre>
+<p>The line that trips people up is <code>testDir = defineBddConfig(...)</code>. The runner is not pointed at your <code>.feature</code> files — it is pointed at the <strong>generated</strong> spec directory. The feature files are an input to a compiler, not the thing executed.</p>
+<hr>
+<h2>Pattern 1 — Fixtures as composable dependency injection</h2>
+<p>This is the single most important pattern for scaling BDD. In naive Cucumber you accumulate state on a giant <code>World</code> object. In Playwright‑BDD you instead express every piece of test context as a <strong>fixture</strong> — a lazily‑instantiated, automatically‑cleaned‑up dependency that steps request by name.</p>
+<p>The mistake most teams make is putting every fixture in one file. At 3,000 tests that file becomes unmergeable. Instead, split fixtures by domain and compose them:</p>
+<pre><code>// tests/fixtures/fixtures.js
+import { base } from &quot;./shared/common-imports.js&quot;;
+import { baseFixtures } from &quot;./shared/base-fixtures.js&quot;;
+import { utilityFixtures } from &quot;./shared/utility-fixtures.js&quot;;
+import { adminFixtures } from &quot;./admin/admin-fixtures.js&quot;;
+import { apiFixtures } from &quot;./api/api-fixtures.js&quot;;
+import { checkoutFixtures } from &quot;./checkout/checkout-fixtures.js&quot;;
+
+export const test = base.extend({
+  ...baseFixtures,
+  ...utilityFixtures,
+  ...adminFixtures,
+  ...apiFixtures,
+  ...checkoutFixtures,
+});</code></pre>
+<p>Each domain owns a small file that exports a plain object of fixtures. The root file is just composition. New team adds a feature area? They add a file and one spread line — no merge conflicts in shared code.</p>
+<p>A fixture itself is a function that <em>sets up</em>, calls <code>use(value)</code>, then <em>tears down</em>:</p>
+<pre><code>export const baseFixtures = {
+  // Derive a value from another fixture (viewport is built in)
+  isSmallViewPort: async ({ viewport }, use) =&gt; {
+    await use(viewport &amp;&amp; viewport.width &lt; 768);
+  },
+
+  // Read configuration once, share it everywhere
+  env: async ({}, use) =&gt; {
+    await use(process.env.ENV || &quot;qa&quot;);
+  },
+
+  // Set up + guaranteed teardown, even if the test fails
+  seededAccount: async ({ dbConnection, env }, use) =&gt; {
+    const account = await createAccount(dbConnection, env);
+    await use(account);             // test runs here
+    await deleteAccount(dbConnection, account.id); // always cleans up
+  },
+};</code></pre>
+<p>Three properties make this scale:</p>
+<ol>
+<li><strong>Lazy</strong> — a fixture is only created if a step in that scenario actually asks for it. A scenario that never touches the database never opens a connection.</li>
+<li><strong>Cached per test</strong> — request <code>seededAccount</code> from five steps and you get the <em>same</em> instance.</li>
+<li><strong>Auto‑teardown</strong> — anything after <code>use()</code> runs as cleanup, in reverse order, regardless of pass/fail. No more leaked rows or orphaned sessions.</li>
+</ol>
+<h3>A shared scratchpad for cross‑step state</h3>
+<p>Gherkin steps are deliberately stateless functions, but a scenario often needs to carry a value from one step to the next (a generated ID, a captured timestamp). Rather than reaching for globals, expose a small per‑test cache as a fixture:</p>
+<pre><code>runTimeCache: async ({}, use) =&gt; {
+  await use(new RunTimeCache()); // fresh Map-like object per test
+},</code></pre>
+<pre><code>Given I note the current server time
+When I submit the form
+Then the record timestamp is after the noted time</code></pre>
+<p>Each step reads/writes <code>runTimeCache</code>. Because it is a fixture, it is automatically isolated per test — parallel workers can never stomp on each other&#39;s state. This is the disciplined replacement for Cucumber&#39;s mutable <code>World</code>.</p>
+<hr>
+<h2>Pattern 2 — Steps bound to your custom test</h2>
+<p>Steps are defined with <code>createBdd(test)</code>, passing in the <em>composed</em> test object so every step has typed access to your fixtures via destructuring:</p>
+<pre><code>import { createBdd } from &quot;playwright-bdd&quot;;
+import { test } from &quot;../../fixtures/fixtures&quot;;
+
+const { Given, When, Then } = createBdd(test);
+
+Given(&quot;I wait for {int} seconds&quot;, async ({}, seconds) =&gt; {
+  await new Promise((r) =&gt; setTimeout(r, seconds * 1000));
+});
+
+When(&quot;I sign in as {string}&quot;, async ({ page, loginHelper }, role) =&gt; {
+  await loginHelper.signIn(page, role);
+});
+
+Then(&quot;I see the {string} confirmation page&quot;, async ({ confirmationPage }, id) =&gt; {
+  await confirmationPage.assertVisible(id);
+});</code></pre>
+<p>Notice that <code>page</code>, <code>loginHelper</code>, and <code>confirmationPage</code> all arrive through the first destructured argument — they are fixtures. The step never constructs a page object or a browser page; it just asks for what it needs. This keeps step bodies tiny and makes the dependency graph explicit.</p>
+<p>The <code>{int}</code> and <code>{string}</code> placeholders are <strong>Cucumber expressions</strong>. They are more readable than regex and auto‑convert types, which matters when thousands of steps share a vocabulary.</p>
+<figure><img src="https://laxminarayanaboga.github.io/articles/assets/diagrams/scaling-playwright-bdd-2.png" alt="Diagram: Scaling Playwright‑BDD to 3,000+ Tests Without Losing Your Mind (2)"></figure><hr>
+<h2>Pattern 3 — Page objects resolved through fixtures</h2>
+<p>Large suites often need the <em>same</em> logical screen to behave slightly differently across configurations (a white‑label app, an A/B variant, a localized build). The clean way to handle this without <code>if</code> ladders in every step is to resolve the right page object <strong>inside a fixture</strong>, keyed off another fixture:</p>
+<pre><code>const pageMapping = {
+  variantA: { startPage: VariantAStartPage, summaryPage: VariantASummaryPage },
+  variantB: { startPage: VariantBStartPage, summaryPage: VariantBSummaryPage },
+};
+
+async function resolvePage({ variant, page, isSmallViewPort }, use, type) {
+  const PageClass = pageMapping[variant]?.[type];
+  if (!PageClass) throw new Error(`No '${type}' page for variant '${variant}'`);
+  await use(new PageClass(page, isSmallViewPort));
+}
+
+export const pageFixtures = {
+  startPage: async (deps, use) =&gt; resolvePage(deps, use, &quot;startPage&quot;),
+  summaryPage: async (deps, use) =&gt; resolvePage(deps, use, &quot;summaryPage&quot;),
+};</code></pre>
+<p>Now a step just says <code>await startPage.open()</code>. Which concrete class it gets is decided by the <code>variant</code> fixture, which might itself be derived from the scenario&#39;s tags or test title. The Gherkin stays completely free of branching — the polymorphism lives in the fixture layer.</p>
+<hr>
+<h2>Pattern 4 — Tags as the execution control plane</h2>
+<p>With thousands of scenarios you never run &quot;all of them&quot; in one go. Tags become the query language for <em>which</em> tests run <em>where</em>. A layered tagging convention does the heavy lifting:</p>
+<pre><code>Tag family   Purpose                  Example                          
+-----------  -----------------------  ---------------------------------
+Priority     Blast radius / gating    @p1 @p2 @p3 @p4                  
+Suite        Logical grouping         @smoke @regression @accessibility
+Environment  Where it's valid to run  @local @qa @preprod @prod        
+Capability   Runtime requirement      @webservice @mobile              
+Lifecycle    Exclusions               @manual @slow                    </code></pre>
+<p><code>bddgen</code> accepts a <strong>tag expression</strong> so you compose precise slices:</p>
+<pre><code># Critical-path UI smoke on the QA environment, skip manual-only specs
+npx bddgen --tags &quot;@smoke and @qa and @p1 and not @manual&quot;</code></pre>
+<p>A few principles that keep this sane at scale:</p>
+<ul>
+<li><strong><code>not @manual</code> everywhere.</strong> Tag scenarios that document a human‑only check with <code>@manual</code> and exclude them from every automated run. The Gherkin still serves as living documentation, but it never breaks CI.</li>
+<li><strong>Priority drives gating.</strong> <code>@p1</code> is the must‑pass release blocker set; lower priorities can be scheduled less often or allowed to soak.</li>
+<li><strong>Tag Examples tables independently.</strong> With Scenario Outlines you can attach different tags to different <code>Examples</code> blocks, so the <em>same</em> scenario contributes a <code>@p1</code> row to one environment and a <code>@p4</code> row to another:</li>
+</ul>
+<pre><code>Scenario Outline: Submit form as &lt;role&gt;
+  Given I sign in as &quot;&lt;role&gt;&quot;
+  When I submit the form
+  Then I see the confirmation page
+
+  @p1 @qa
+  Examples:
+    | role  |
+    | Admin |
+
+  @p4 @prod
+  Examples:
+    | role   |
+    | Viewer |</code></pre>
+<hr>
+<h2>Pattern 5 — Orchestrating the suite for speed</h2>
+<p><code>fullyParallel: true</code> plus multiple workers gets you a long way, but a 3,000‑test suite benefits from being run as <strong>several targeted batches</strong> rather than one monolithic invocation. Batching by tag lets you tune workers and retries per group — fast independent UI checks run wide, stateful sequential flows run with <code>--workers=1</code>.</p>
+<p>A thin orchestration script captures this as data:</p>
+<pre><code>const suites = {
+  &quot;smoke-p1&quot;:   '@smoke and @p1 and not @manual',
+  &quot;regression&quot;: '@regression and not @p4 and not @manual',
+  &quot;api&quot;:        '@api and not @manual',
+};
+
+for (const [name, tags] of Object.entries(suites)) {
+  run(`npx bddgen --tags &quot;${tags}&quot;`);
+  run(`npx playwright test ${name === &quot;sequential&quot; ? &quot;--workers=1&quot; : &quot;&quot;}`);
+  collectMetrics(name); // duration, pass/fail/flaky -&gt; CSV
+}</code></pre>
+<p>Two things this buys you:</p>
+<ol>
+<li><strong>Targeted concurrency.</strong> Parallel‑safe groups get many workers; order‑dependent groups are pinned to one.</li>
+<li><strong>Per‑suite metrics.</strong> Capturing duration and flaky counts per batch turns &quot;the suite is slow&quot; into &quot;the regression‑API batch regressed by 40 seconds on Tuesday,&quot; which is actionable.</li>
+</ol>
+<figure><img src="https://laxminarayanaboga.github.io/articles/assets/diagrams/scaling-playwright-bdd-3.png" alt="Diagram: Scaling Playwright‑BDD to 3,000+ Tests Without Losing Your Mind (3)"></figure><hr>
+<h2>Pattern 6 — Keep failures debuggable at scale</h2>
+<p>When you have thousands of tests, <em>occasional</em> flakiness is a statistical certainty. The goal is not zero flakiness — it is <strong>cheap diagnosis</strong>. Playwright&#39;s artifacts make this nearly free:</p>
+<pre><code>use: {
+  trace: &quot;retain-on-failure&quot;,
+  screenshot: &quot;only-on-failure&quot;,
+  video: &quot;retain-on-failure&quot;,
+},</code></pre>
+<p>Because Playwright‑BDD generates standard Playwright specs, the Trace Viewer &quot;just works&quot; on a failed BDD scenario. You open the trace and replay the exact DOM, network, and console state at every Gherkin step. Pair <code>retain-on-failure</code> with <code>retries: 1</code> on CI so genuine flakes self‑heal while real failures still surface their full trace.</p>
+<hr>
+<h2>Lessons learned</h2>
+<p>A few hard‑won takeaways from running BDD at this scale:</p>
+<ul>
+<li><strong>Treat <code>bddgen</code> as a compiler.</strong> Never commit or edit the generated folder; regenerate it in CI. Confusion here is the number‑one onboarding stumble.</li>
+<li><strong>Fixtures over a <code>World</code> object.</strong> Every shared dependency should be a fixture so it is lazy, cached, isolated, and self‑cleaning. This single discipline eliminates the most common source of cross‑test pollution.</li>
+<li><strong>Split fixtures and steps by domain.</strong> One mega‑file is a merge‑conflict factory. Composition keeps teams unblocked.</li>
+<li><strong>Tags are your API to the suite.</strong> A consistent, layered tag taxonomy is what lets you slice 3,000 tests into the exact 80 you need right now.</li>
+<li><strong>Keep Gherkin free of logic.</strong> Branching, variant resolution, and environment differences belong in fixtures and helpers — not in <code>.feature</code> files. The business‑readable layer must stay business‑readable.</li>
+<li><strong>Measure each batch.</strong> Per‑suite duration and flaky metrics turn vague slowness into specific, fixable regressions.</li>
+</ul>
+<p>Playwright‑BDD&#39;s core trick — compiling Gherkin down to native Playwright tests — means you never have to choose between <em>readable</em> and <em>fast</em>. With disciplined fixtures, domain‑split steps, and a strong tag taxonomy, a BDD suite can grow past 3,000 tests and still be something the whole team enjoys working in.</p>
+<hr>
+<p><em>Written from real‑world experience building a large multi‑environment Playwright‑BDD suite. All examples are generic illustrations of the patterns described.</em></p>
+
+    <hr>
+    <p><em>Originally published at <a href="https://laxminarayanaboga.github.io/articles/scaling-playwright-bdd.html">https://laxminarayanaboga.github.io/articles/scaling-playwright-bdd.html</a></em></p>
+  </article>
+</body>
+</html>

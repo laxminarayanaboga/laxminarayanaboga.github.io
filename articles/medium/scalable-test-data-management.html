@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="canonical" href="https://laxminarayanaboga.github.io/articles/scalable-test-data-management.html">
+  <title>Highly Scalable Test Data Management in Playwright</title>
+</head>
+<body>
+  <article>
+<h1>Highly Scalable Test Data Management in Playwright</h1>
+<blockquote>
+<p>How we tie thousands of test users and hundreds of journey datasets to the right test — automatically — using fixtures, not glue code.</p>
+</blockquote>
+<p>Test logic is rarely what kills a large automation suite. <strong>Test data is.</strong> Once you pass a few hundred scenarios, the data layer becomes the thing that rots: hard‑coded users copy‑pasted across files, parallel tests colliding on the same record, environment‑specific values smuggled into <code>if</code> branches, and a &quot;test data&quot; folder nobody dares to refactor.</p>
+<p>This article is about the data architecture that lets a single Playwright suite manage <strong>thousands of test users and hundreds of journey datasets</strong> without any of that pain. The central idea is simple and worth saying up front:</p>
+<blockquote>
+<p>A test should <em>declare</em> the data it needs. The framework should <em>find, prepare, and clean up</em> that data automatically.</p>
+</blockquote>
+<p>No <code>beforeEach</code> wiring. No manual lookups. No data plumbing inside test bodies. We get there with <a href="https://playwright.dev/docs/test-fixtures">Playwright fixtures</a> and one elegant binding trick.</p>
+<hr>
+<h2>The problem with &quot;just import the data&quot;</h2>
+<p>The naive approach imports a JSON blob into a test:</p>
+<pre><code>import users from &quot;../data/users.json&quot;;
+
+test(&quot;user can sign in&quot;, async ({ page }) =&gt; {
+  await signIn(page, users.standardUser); // hard-coded choice
+});</code></pre>
+<p>This breaks in every direction at scale:</p>
+<ul>
+<li>The test is welded to <strong>one</strong> user — you can&#39;t reuse it for the premium user, the locked‑out user, or the edge‑case user.</li>
+<li>Every spec loads <strong>all</strong> the data, even data it never touches.</li>
+<li>The same record is shared by every parallel worker, so two tests racing on the same user corrupt each other.</li>
+<li>Environment differences (<code>local</code> vs <code>qa</code> vs <code>prod</code>) leak into the test as branching.</li>
+</ul>
+<p>What we want instead is for the <em>test</em> to say which user it needs, and for the <em>framework</em> to deliver exactly that — isolated, prepared, and torn down.</p>
+<hr>
+<h2>The core idea: the test title is the data contract</h2>
+<p>Data‑driven tests in Playwright are typically generated in a loop, one <code>test()</code> per data row. We make the <strong>title of each generated test carry its data identifiers</strong>, then a fixture reads them back out of <code>testInfo.title</code>. The test body stays completely generic; the title decides which data flows in.</p>
+<pre><code>const cases = [
+  { testUser: &quot;id-1001-standard&quot;,  journeyData: &quot;journey-standard-happy&quot; },
+  { testUser: &quot;id-1002-edge-case&quot;, journeyData: &quot;journey-edge-rejection&quot; },
+];
+
+for (const c of cases) {
+  test(
+    `User completes the signup journey. testUser: &quot;${c.testUser}&quot;, journeyData: &quot;${c.journeyData}&quot;`,
+    async ({ page, testUser, journeyData }) =&gt; {
+      await startJourney(page);
+      await fillForm(page, testUser, journeyData); // generic body
+      await expectConfirmation(page);
+    }
+  );
+}</code></pre>
+<p>The fixtures do the binding by reading the identifiers straight out of the title:</p>
+<pre><code>testUser: async ({ testUsers, RANDOM_NUMBER }, use, testInfo) =&gt; {
+  // Read the identifier straight out of the test title
+  const match = testInfo.title.match(/testUser: &quot;(.*?)&quot;/);
+  const uniqueName = match ? match[1] : null;
+
+  // Resolve it to a fully-prepared, isolated user object
+  const testUser = await testUsers.resolveTestUser(uniqueName, RANDOM_NUMBER);
+  await use(testUser);
+},
+
+journeyData: async ({ env }, use, testInfo) =&gt; {
+  const match = testInfo.title.match(/journeyData: &quot;(.*?)&quot;/);
+  const fileName = match ? match[1] : null;
+  const data = await fs.readJson(
+    await resolveTestDataPath(&quot;journey&quot;, env, &quot;default&quot;, `${fileName}.json`)
+  );
+  await use(data);
+},</code></pre>
+<p>The test body simply asks for <code>testUser</code> or <code>journeyData</code> by name — it never knows or cares <em>which</em> user or dataset arrived. The same body serves every data row. Add a new data scenario by adding an <strong>entry to the array</strong>, not code.</p>
+<figure><img src="https://laxminarayanaboga.github.io/articles/assets/diagrams/scalable-test-data-management-1.png" alt="Diagram: Highly Scalable Test Data Management in Playwright (1)"></figure><p>This single pattern is what makes the suite scale: <strong>data selection is declarative and lives next to the test list; data resolution is centralized in one fixture.</strong></p>
+<hr>
+<h2>Layer 1 — A catalog of static users, addressed by intent</h2>
+<p>Thousands of users are kept in a catalog where each entry is identified by a <strong>purpose‑describing unique name</strong>, not by anonymous index:</p>
+<pre><code>[
+  { &quot;id&quot;: 1001, &quot;uniqueName&quot;: &quot;id-1001-standard&quot;,    &quot;purpose&quot;: &quot;happy-path&quot; },
+  { &quot;id&quot;: 1002, &quot;uniqueName&quot;: &quot;id-1002-edge-case&quot;,   &quot;purpose&quot;: &quot;rejection-flow&quot; },
+  { &quot;id&quot;: 1003, &quot;uniqueName&quot;: &quot;id-1003-locked-out&quot;,  &quot;purpose&quot;: &quot;auth-failure&quot; }
+]</code></pre>
+<p>The <code>uniqueName</code> is the key the test references. It reads like documentation (<code>id-1003-locked-out</code>), and the numeric <code>id</code> keeps it collision‑free even when names are similar. A small loader class indexes the catalog so lookups by name or id are O(1):</p>
+<pre><code>class TestUsers {
+  async loadTestUsersData(env) {
+    this.testUsers = await fs.readJson(
+      await resolveTestDataPath(&quot;test-users&quot;, env, &quot;default&quot;, &quot;test-users.json&quot;)
+    );
+  }
+  getTestUserByUniqueName(name) {
+    return this.testUsers.find((u) =&gt; u.uniqueName === name);
+  }
+}</code></pre>
+<p>Crucially, the catalog is loaded <strong>once per worker</strong> through a fixture, and individual users are handed out per test. Tests never read files directly.</p>
+<hr>
+<h2>Layer 2 — Generated users for infinite, collision‑free scale</h2>
+<p>A static catalog can&#39;t cover everything. Many tests need a <em>fresh, unique</em> user every run — especially registration and &quot;new account&quot; flows where re‑using a record would fail on the second execution. Rather than hand‑authoring thousands of throwaway users, we <strong>generate</strong> them on demand.</p>
+<p>The resolver branches on a naming convention. Ask for any name containing <code>-any-user</code> and you get a freshly fabricated person:</p>
+<pre><code>async resolveTestUser(uniqueName, RANDOM_NUMBER) {
+  if (uniqueName?.includes(&quot;-any-user&quot;)) {
+    const generated = this.generateRandomTestUser(uniqueName, RANDOM_NUMBER);
+
+    // Optional: merge explicit overrides from the catalog on top of the
+    // random base — e.g. force a specific firstName to trigger an edge case.
+    const overrides = this.getTestUserByUniqueName(uniqueName);
+    if (overrides) {
+      const RESERVED = [&quot;id&quot;, &quot;uniqueName&quot;, &quot;purpose&quot;, &quot;comment&quot;];
+      for (const [k, v] of Object.entries(overrides)) {
+        if (!RESERVED.includes(k)) generated[k] = v;
+      }
+    }
+    return generated;
+  }
+  // Otherwise return the static catalog user
+  return this.getTestUserByUniqueName(uniqueName);
+}</code></pre>
+<p>Generation uses a faker‑style helper for realistic names, dates, and addresses, and stamps a per‑test <code>RANDOM_NUMBER</code> into the unique fields:</p>
+<pre><code>generateRandomTestUser(uniqueName, RANDOM_NUMBER) {
+  const person = this.getRandomPerson();
+  return {
+    id: RANDOM_NUMBER,
+    uniqueName: `id-${RANDOM_NUMBER}-${uniqueName}`,
+    firstName: person.firstName,
+    surName: person.lastName,
+    dateOfBirth: person.dateOfBirth,
+    mobileNumber: `070000${RANDOM_NUMBER}`,        // unique per test
+    email: `test-user-${RANDOM_NUMBER}@example.test`, // unique per test
+  };
+}</code></pre>
+<p>This is the trick that makes <strong>parallel execution safe</strong>. Because <code>RANDOM_NUMBER</code> is itself a per‑test fixture, every worker gets users whose contact details can never collide — no shared mutable record, no flaky &quot;user already exists&quot; failures.</p>
+<p>The &quot;generate base + apply catalog overrides&quot; combo gives the best of both worlds: infinite uniqueness <em>and</em> the ability to pin one field when a test needs a specific edge condition.</p>
+<hr>
+<h2>Layer 3 — Template placeholders for unique‑but‑structured data</h2>
+<p>Journey datasets (hundreds of JSON files describing multi‑step flows) often embed fields that must be unique per run but otherwise structured. We keep them as <strong>templates with placeholders</strong> and substitute at resolve time:</p>
+<pre><code>{
+  &quot;accountName&quot;: &quot;Account-__REPLACE_WITH_RANDOM_STRING__&quot;,
+  &quot;reference&quot;:   &quot;REF-__REPLACE_WITH_RANDOM_NUMBER__&quot;
+}</code></pre>
+<p>A generic <code>replaceInObject</code> walks the loaded object and swaps tokens for the per‑test random values:</p>
+<pre><code>productData: async ({ env, RANDOM_STRING }, use, testInfo) =&gt; {
+  const fileName = testInfo.title.match(/productData: &quot;(.*?)&quot;/)?.[1];
+  const data = await fs.readJson(
+    await resolveTestDataPath(&quot;product&quot;, env, &quot;default&quot;, `${fileName}.json`)
+  );
+  replaceInObject(data, { RANDOM_STRING }); // unique account name every run
+  await use(data);
+},</code></pre>
+<p>The dataset author writes intent‑revealing JSON; the framework guarantees uniqueness. No author ever has to remember to &quot;make this unique.&quot;</p>
+<hr>
+<h2>Layer 4 — A 4‑level fallback resolver for environments and variants</h2>
+<p>The biggest source of data sprawl is duplication across environments and product variants. The wrong fix is to copy every dataset into every environment folder. Our fix is a <strong>specificity cascade</strong>: ask for the most specific file, fall back toward a shared baseline.</p>
+<pre><code>async function resolveTestDataPath(section, env, variant, fileName) {
+  const candidates = [
+    `tests/test-data/${section}/${env}/${variant}/${fileName}`,   // most specific
+    `tests/test-data/${section}/${env}/default/${fileName}`,      // env-specific
+    `tests/test-data/${section}/default/${variant}/${fileName}`,  // variant-specific
+    `tests/test-data/${section}/default/default/${fileName}`,     // shared baseline
+  ];
+  for (const candidate of candidates) {
+    if (await fs.pathExists(candidate)) return candidate;
+  }
+  throw new Error(`Test data not found. Tried:\n${candidates.join(&quot;\n&quot;)}`);
+}</code></pre>
+<figure><img src="https://laxminarayanaboga.github.io/articles/assets/diagrams/scalable-test-data-management-2.png" alt="Diagram: Highly Scalable Test Data Management in Playwright (2)"></figure><p>The payoff: <strong>write a dataset once at the baseline, override only the deltas.</strong> A value that differs only on <code>qa</code> lives in exactly one <code>qa/default</code> file; everything else inherits from <code>default/default</code>. When a test fails to find data, the error lists every path it tried — debugging a missing file takes seconds, not guesswork.</p>
+<hr>
+<h2>Tying it together: lazy, isolated, self‑cleaning</h2>
+<p>Each layer is exposed as a fixture, and fixtures give us three properties that are essential at scale:</p>
+<p><strong>Lazy</strong> — data is only loaded if a test actually requests that fixture. A test that never touches journey data never opens a journey file.</p>
+<p><strong>Cached per test, shared per worker where it counts</strong> — the expensive things (catalog loading, DB connections) are <code>worker</code>‑scoped and created once per worker; the per‑test things (the chosen user, the journey object) are fresh each test:</p>
+<pre><code>// Loaded once per worker, reused across that worker's tests
+testUsers: async ({ env }, use) =&gt; {
+  const users = new TestUsers();
+  await users.loadTestUsersData(env);
+  await use(users);
+},
+
+// Expensive connection, shared across the worker's tests, closed at the end
+dbConnection: [async ({}, use) =&gt; {
+  const db = new DbConnection();
+  await db.connect();
+  await use(db);
+  await db.close();          // teardown
+}, { scope: &quot;worker&quot; }],</code></pre>
+<p><strong>Self‑cleaning</strong> — anything after <code>use()</code> runs as teardown, in reverse order, pass or fail. Seeded records get removed; connections get closed; shared state gets restored. No orphaned data accumulating across runs.</p>
+<figure><img src="https://laxminarayanaboga.github.io/articles/assets/diagrams/scalable-test-data-management-3.png" alt="Diagram: Highly Scalable Test Data Management in Playwright (3)"></figure><hr>
+<h2>Lessons learned</h2>
+<p>A few principles that have held up across thousands of tests:</p>
+<ul>
+<li><strong>Make the test declare its data.</strong> Putting the data identifier in the test title — and reading it back from <code>testInfo.title</code> in a fixture — decouples test logic from data choice completely. One test body, unlimited data variations.</li>
+<li><strong>Address data by intent, not index.</strong> <code>id-1003-locked-out</code> is self‑documenting; <code>users[2]</code> is a future bug.</li>
+<li><strong>Generate for uniqueness, catalog for specificity.</strong> Fresh generated users keep parallel runs collision‑free; a static catalog (and overrides) pins the exact edge cases you need.</li>
+<li><strong>Template the volatile fields.</strong> Placeholders plus a per‑test random value mean dataset authors never have to think about uniqueness.</li>
+<li><strong>Cascade, don&#39;t copy.</strong> A specificity‑ordered resolver kills duplication across environments and variants, and its &quot;paths I tried&quot; error message makes missing data trivial to debug.</li>
+<li><strong>Let fixtures own the lifecycle.</strong> Lazy creation, worker‑scoped reuse for expensive resources, and guaranteed teardown are what keep a giant data layer from leaking.</li>
+</ul>
+<p>The result is a data layer that <em>feels</em> small even though it manages thousands of users and hundreds of datasets. Adding coverage is usually a one‑line change to a data array — and the framework quietly does the rest: find the data, make it unique, hand it to the test, and clean up afterward.</p>
+<hr>
+<p><em>Written from real‑world experience building a large, multi‑environment Playwright suite. All names, values, and examples are generic illustrations of the patterns described.</em></p>
+
+    <hr>
+    <p><em>Originally published at <a href="https://laxminarayanaboga.github.io/articles/scalable-test-data-management.html">https://laxminarayanaboga.github.io/articles/scalable-test-data-management.html</a></em></p>
+  </article>
+</body>
+</html>

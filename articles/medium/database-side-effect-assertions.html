@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="canonical" href="https://laxminarayanaboga.github.io/articles/database-side-effect-assertions.html">
+  <title>Don't Just Test the Screen: Verifying Database &amp; Message Side Effects in Playwright</title>
+</head>
+<body>
+  <article>
+<h1>Don&#39;t Just Test the Screen: Verifying Database &amp; Message Side Effects in Playwright</h1>
+<blockquote>
+<p>A green UI assertion can hide a broken backend. Here&#39;s how to drive the front end with Playwright and then assert on the database and message store to prove the <em>system</em> actually did the right thing.</p>
+</blockquote>
+<p>End‑to‑end tests usually stop at the surface: click the button, see the success banner, pass. But the banner only proves the <em>page</em> reacted — not that the order was written, the relational row was created, the document landed in the right collection, or the downstream record carries the right values. Some of the nastiest production bugs live precisely in that gap: the screen says &quot;done,&quot; the data says otherwise.</p>
+<p>This article is about closing that gap. We&#39;ll drive the UI with Playwright and then <strong>assert on backend side effects</strong> — relational rows and document‑store records — using connection fixtures, polling for asynchronous writes, and deep object matching. The result is a test that verifies the <em>system</em>, not just the view.</p>
+<hr>
+<h2>The pattern: act on the UI, assert on the data</h2>
+<p>The structure of a side‑effect test is always the same three beats:</p>
+<figure><img src="https://laxminarayanaboga.github.io/articles/assets/diagrams/database-side-effect-assertions-1.png" alt="Diagram: Don't Just Test the Screen: Verifying Database &amp; Message Side Effects in Playwright (1)"></figure><p>The middle beat — <em>wait</em> — is what separates a reliable data assertion from a flaky one, because backend writes are rarely synchronous with the UI response. We&#39;ll come back to it.</p>
+<hr>
+<h2>Step 1 — Database access as a worker‑scoped fixture</h2>
+<p>Opening a database connection per test would be slow and wasteful across thousands of tests. Instead, expose the connection as a <strong>worker‑scoped fixture</strong>: created once per worker process, reused by every test that worker runs, and closed automatically at the end.</p>
+<pre><code>dbConnection: [async ({}, use) =&gt; {
+  const db = new DbConnection();
+  await db.connect();
+  await use(db);        // shared across all tests in this worker
+  await db.close();     // teardown when the worker finishes
+}, { scope: &quot;worker&quot; }],
+
+docStore: [async ({}, use) =&gt; {
+  const store = DocStoreConnection.getInstance();
+  await store.connect();
+  await use(store);
+  await store.close();
+}, { scope: &quot;worker&quot; }],</code></pre>
+<p>The connection wrapper itself stays thin — connect, run a parameterised query, close:</p>
+<pre><code>class DbConnection {
+  async query(sql, args) {
+    const [rows] = await this.connection.execute(sql, args); // parameterised
+    return rows;
+  }
+}</code></pre>
+<blockquote>
+<p><strong>Security note:</strong> always use <em>parameterised</em> queries (<code>execute(sql, args)</code>), never string‑concatenate test values into SQL. Test code that builds queries from data is just as injectable as production code — and test data often comes from external sources.</p>
+</blockquote>
+<p>A test now requests the connection like any other dependency, with zero setup code:</p>
+<pre><code>test(&quot;submitting the form persists an order&quot;, async ({ page, dbConnection }) =&gt; {
+  await submitOrderForm(page);
+  // ... assert against dbConnection
+});</code></pre>
+<hr>
+<h2>Step 2 — Poll for asynchronous writes (don&#39;t sleep)</h2>
+<p>The single biggest cause of flaky data assertions is asserting <em>too early</em>. The UI returns, the test queries the database, and the row isn&#39;t there yet — because a queue, a worker, or an async handler hasn&#39;t finished. The wrong fix is <code>await wait(5000)</code>: too short and it&#39;s flaky, too long and it&#39;s slow.</p>
+<p>The right fix is a <strong>poll‑until‑present</strong> helper that retries on an interval up to a timeout:</p>
+<pre><code>async function pollForRecord(db, email, intervalMs = 2000, timeoutMs = 60000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() &lt; deadline) {
+    const rows = await db.query(
+      &quot;SELECT * FROM orders WHERE customer_email = ? AND is_active = 1&quot;,
+      [email]
+    );
+    if (rows.length &gt; 0) return rows;     // success — return as soon as it appears
+    await wait(intervalMs);
+  }
+  throw new Error(`No active order appeared for ${email} within ${timeoutMs}ms`);
+}</code></pre>
+<p>This is the database equivalent of Playwright&#39;s web‑first auto‑waiting: assert on a <em>condition becoming true</em>, not on a fixed delay. It&#39;s fast when the write is fast, patient when it&#39;s slow, and it fails with a clear message instead of a mysterious empty result.</p>
+<pre><code>test(&quot;order is written to the database after submission&quot;, async ({ page, dbConnection }) =&gt; {
+  const email = await submitOrderForm(page);
+  const [order] = await pollForRecord(dbConnection, email);
+
+  expect(order.status).toBe(&quot;active&quot;);
+  expect(Number(order.amount)).toBe(250);
+});</code></pre>
+<hr>
+<h2>Step 3 — Deep‑match documents against expected data</h2>
+<p>Relational checks are usually a few columns. Document stores are different: you often want to assert that a <em>whole nested document</em> matches an expected shape — but only the fields you care about, ignoring volatile ones like generated IDs and timestamps.</p>
+<p>Hand‑writing dozens of <code>expect(doc.a.b.c).toBe(...)</code> lines is brittle. A better approach is a <strong>deep, partial matcher</strong> that compares an actual document against an expected fixture, with support for &quot;ignore this field&quot; markers:</p>
+<pre><code>test(&quot;the stored document matches the expected shape&quot;, async ({ docStore }) =&gt; {
+  const expected = await loadExpectedJson(&quot;order-created-expected.json&quot;);
+  const actual   = await docStore.findLatestFor(testUser.email);
+
+  // Partial deep match: every field in `expected` must match `actual`;
+  // fields marked as &quot;#ignore&quot; (ids, timestamps) are skipped.
+  match(actual, expected);
+});</code></pre>
+<pre><code>{
+  &quot;type&quot;: &quot;ORDER_CREATED&quot;,
+  &quot;customer&quot;: { &quot;email&quot;: &quot;buyer@example.test&quot;, &quot;tier&quot;: &quot;standard&quot; },
+  &quot;amount&quot;:   250,
+  &quot;id&quot;:        &quot;#ignore&quot;,
+  &quot;createdAt&quot;: &quot;#ignore&quot;
+}</code></pre>
+<p>Keeping the expected shape as a <strong>data file</strong> (resolved through the same environment/variant fallback your other test data uses) means contributors update expectations by editing JSON, not test code — and the matcher reports the exact path of any mismatch (<code>customer.tier: expected &#39;standard&#39;, got &#39;premium&#39;</code>), which makes failures self‑explaining.</p>
+<hr>
+<h2>Step 4 — Cleanup is part of the test, not an afterthought</h2>
+<p>Side‑effect tests <em>create</em> side effects. Left unattended, those accumulate and eventually cause the very collisions that make suites flaky — a &quot;user already exists,&quot; a stale record matched by the next run. So cleanup must be reliable and, ideally, automatic.</p>
+<p>Two complementary tactics:</p>
+<p><strong>Targeted teardown via a fixture</strong> — the test declares what it touched, and a fixture removes it afterward regardless of outcome:</p>
+<pre><code>cleanupCreatedOrders: async ({ dbConnection, testUser }, use) =&gt; {
+  await use(new DoNothing());                 // setup: nothing
+  await deactivateOrdersFor(dbConnection, testUser.email); // teardown: always
+},</code></pre>
+<p><strong>Defensive pre‑cleanup</strong> — before a test that depends on a clean slate, proactively neutralise any leftovers from prior runs using a forgiving (fuzzy) match across the identifiers a user might be recognised by:</p>
+<pre><code>async function purgeLeftovers({ db, docStore, user }) {
+  await clearDocCacheFor(docStore, user);            // doc store
+  const ids = await findRelatedIds(db, user);        // fuzzy: email, phone, name+dob
+  if (ids.length === 0) return;
+  await deactivateOrders(db, ids);
+  await deleteAuthRecord(ids[0]);
+  await deactivateProfiles(db, ids);
+}</code></pre>
+<blockquote>
+<p>The fuzzy‑match cleanup matters because real systems recognise the same person through several keys (email, normalised phone, name + date of birth + postcode). Cleaning by a single key leaves orphans that the <em>next</em> test trips over. Match the way the system matches.</p>
+</blockquote>
+<hr>
+<h2>Putting it together</h2>
+<p>A complete side‑effect test reads as one clear story — act, wait, assert across layers, and let teardown clean up:</p>
+<pre><code>test(&quot;a completed purchase is consistent across UI, database, and document store&quot;,
+  async ({ page, dbConnection, docStore, cleanupCreatedOrders }) =&gt; {
+    // ACT — front end
+    const email = await completePurchase(page);
+    await expect(page.getByText(&quot;Order confirmed&quot;)).toBeVisible();
+
+    // WAIT + ASSERT — relational
+    const [order] = await pollForRecord(dbConnection, email);
+    expect(order.status).toBe(&quot;active&quot;);
+
+    // ASSERT — document store
+    const doc = await docStore.findLatestFor(email);
+    match(doc, await loadExpectedJson(&quot;order-created-expected.json&quot;));
+
+    // CLEANUP happens automatically via the fixture
+  }
+);</code></pre>
+<p>The UI assertion proves the user saw success; the database and document assertions prove the <em>system</em> delivered it. That&#39;s the difference between testing the screen and testing the software.</p>
+<hr>
+<h2>Lessons learned</h2>
+<ul>
+<li><strong>A green UI isn&#39;t proof of a correct backend.</strong> Assert on the data the action was supposed to produce, not just the banner that says it did.</li>
+<li><strong>Share connections per worker.</strong> Worker‑scoped fixtures give you pooling for free and guarantee the connection is closed.</li>
+<li><strong>Poll, never sleep.</strong> Retry until the asynchronous write appears, with a clear timeout error — the data‑layer equivalent of auto‑waiting.</li>
+<li><strong>Deep‑match documents from data files.</strong> A partial matcher with &quot;ignore&quot; markers keeps assertions robust against volatile fields and lets non‑coders maintain expectations.</li>
+<li><strong>Clean up the way the system identifies users.</strong> Fuzzy, multi‑key cleanup (and teardown fixtures) prevent the orphaned records that make suites flaky over time.</li>
+<li><strong>Parameterise every query.</strong> Test SQL is production‑grade attack surface; never concatenate values.</li>
+</ul>
+<p>Reaching past the browser into the database and message store turns &quot;it looked like it worked&quot; into &quot;it provably worked.&quot; For the journeys that really matter, that extra layer of truth is what makes an end‑to‑end test actually end‑to‑end.</p>
+<hr>
+<p><em>Written from real‑world experience building a large, multi‑environment Playwright suite. All names, values, schema, and examples are generic illustrations of the patterns described.</em></p>
+
+    <hr>
+    <p><em>Originally published at <a href="https://laxminarayanaboga.github.io/articles/database-side-effect-assertions.html">https://laxminarayanaboga.github.io/articles/database-side-effect-assertions.html</a></em></p>
+  </article>
+</body>
+</html>

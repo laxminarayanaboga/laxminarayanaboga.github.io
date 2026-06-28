@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="canonical" href="https://laxminarayanaboga.github.io/articles/fixtures-as-a-runtime-system.html">
+  <title>Playwright Fixtures as a Runtime System: Five Patterns Beyond `page`</title>
+</head>
+<body>
+  <article>
+<h1>Playwright Fixtures as a Runtime System: Five Patterns Beyond <code>page</code></h1>
+<blockquote>
+<p>Scopes, teardown‑only guards, cached sessions, and self‑built browser contexts — the fixture mechanics that quietly run a 3,000‑test suite.</p>
+</blockquote>
+<p>Most Playwright tutorials introduce fixtures as &quot;that thing that gives you <code>page</code>,&quot; show a one‑off custom fixture, and move on. That undersells them badly. Fixtures are a full <strong>dependency‑injection and lifecycle runtime</strong> — and once a suite gets large, that runtime is what keeps it from collapsing under its own setup/teardown weight.</p>
+<p>This is a deep‑dive into fixture <em>mechanics</em>, not &quot;what is a fixture.&quot; If you want the basics — composition with <code>base.extend</code>, splitting fixtures by domain — that&#39;s a different conversation. Here we go straight to the five patterns that do the heavy lifting in a real, large suite:</p>
+<ol>
+<li><strong>Scope</strong> — per‑test vs per‑worker, and why it changes everything for shared resources.</li>
+<li><strong>Teardown‑only &quot;guard&quot; fixtures</strong> — restore global state no matter how a test ends.</li>
+<li><strong>Cached‑session fixtures</strong> — log in once, reuse the authenticated state everywhere.</li>
+<li><strong>Self‑built browser contexts</strong> — when the default <code>page</code> isn&#39;t enough.</li>
+<li><strong><code>testInfo</code>‑aware fixtures</strong> — fixtures that read the test&#39;s own metadata.</li>
+</ol>
+<hr>
+<h2>The mental model: a fixture is a slice of setup + teardown around your test</h2>
+<p>Every fixture is a function split by a single <code>await use(value)</code> call. Everything before <code>use</code> is <strong>setup</strong>, everything after is <strong>teardown</strong>, and the value handed to <code>use</code> is what the test (or another fixture) receives.</p>
+<pre><code>myThing: async ({ dependency }, use) =&gt; {
+  const thing = await create(dependency); // setup
+  await use(thing);                        // test runs here
+  await thing.dispose();                   // teardown — always runs
+}</code></pre>
+<p>The runtime guarantees three things that <code>beforeEach</code>/<code>afterEach</code> never did cleanly:</p>
+<ul>
+<li><strong>Lazy</strong> — the fixture only runs if something actually requests it.</li>
+<li><strong>Ordered</strong> — fixtures set up in dependency order and tear down in reverse.</li>
+<li><strong>Resilient</strong> — teardown runs whether the test passed, failed, or threw.</li>
+</ul>
+<p>Hold that model; every pattern below is a variation on it.</p>
+<hr>
+<h2>Pattern 1 — Scope: per‑test isolation vs per‑worker reuse</h2>
+<p>By default a fixture is <strong>test‑scoped</strong>: created fresh for every test, destroyed after. That&#39;s exactly what you want for isolation — a fresh user object, a clean cache, an independent <code>page</code>.</p>
+<p>But some resources are <em>expensive</em> and <em>safe to share</em>: a database connection, a message‑queue client, an auth token for a service account. Recreating them per test would dominate your runtime. Mark those <code>{ scope: &quot;worker&quot; }</code> and Playwright creates them <strong>once per worker process</strong> and reuses them across every test that worker runs:</p>
+<pre><code>// Created ONCE per worker, reused by all its tests, closed at the very end
+dbConnection: [async ({}, use) =&gt; {
+  const db = new DbConnection();
+  await db.connect();
+  await use(db);
+  await db.close();        // teardown runs when the worker finishes
+}, { scope: &quot;worker&quot; }],
+
+// Created fresh for EVERY test — isolation matters here
+runTimeCache: async ({}, use) =&gt; {
+  await use(new RunTimeCache());
+},</code></pre>
+<p>This is connection pooling without a pooling library. With, say, three workers you hold three connections total — not one per test across thousands of tests.</p>
+<figure><img src="https://laxminarayanaboga.github.io/articles/assets/diagrams/fixtures-as-a-runtime-system-1.png" alt="Diagram: Playwright Fixtures as a Runtime System: Five Patterns Beyond `page` (1)"></figure><blockquote>
+<p>Rule of thumb: <strong>test‑scope by default; worker‑scope only for expensive, stateless‑between‑tests resources.</strong> A worker‑scoped fixture that holds mutable per‑test state is a cross‑test contamination bug waiting to happen.</p>
+</blockquote>
+<hr>
+<h2>Pattern 2 — Teardown‑only &quot;guard&quot; fixtures</h2>
+<p>This is the most under‑used fixture trick, and it solves a real problem: <strong>some tests mutate global state</strong> — a feature flag, the system clock, a shared availability setting — and that state <em>must</em> be restored afterward, even if the test fails halfway through.</p>
+<p>A <code>try/finally</code> in the test body is fragile (easy to forget, easy to bypass with an early return). Instead, encode the restoration as a fixture whose <em>only</em> job is teardown. The setup half does nothing; the teardown half does the cleanup:</p>
+<pre><code>restoreSystemClock: async ({}, use) =&gt; {
+  await use(new DoNothing());   // setup: hand back a no-op placeholder
+  await resetSystemClock();     // teardown: ALWAYS runs after the test
+},
+
+restoreSharedAvailability: async ({ dbConnection, env }, use) =&gt; {
+  await use(new DoNothing());        // setup: nothing
+  await restoreAvailability(dbConnection, env); // teardown: guaranteed
+},</code></pre>
+<p><code>DoNothing</code> is exactly what it sounds like:</p>
+<pre><code>class DoNothing { constructor() {} }</code></pre>
+<p>A test opts into the guarantee simply by <strong>listing the fixture</strong> — it never has to call anything:</p>
+<pre><code>test(&quot;flow that shifts the system clock&quot;, async ({ page, restoreSystemClock }) =&gt; {
+  await advanceClockByOneMonth();
+  await runTimeSensitiveFlow(page);
+  // no cleanup code here — the guard fixture restores the clock on teardown,
+  // pass or fail
+});</code></pre>
+<p>The value (<code>new DoNothing()</code>) is irrelevant; requesting the fixture is what <em>registers the teardown</em>. Because Playwright runs fixture teardown in reverse order regardless of outcome, your global state is restored deterministically. This turns &quot;remember to undo your mess&quot; from a code‑review checklist item into a structural guarantee.</p>
+<hr>
+<h2>Pattern 3 — Cached‑session fixtures (log in once, reuse everywhere)</h2>
+<p>Authentication is the classic per‑test tax. Logging in through the UI for every one of thousands of tests is slow and pointless. The fix is a fixture that <strong>persists <code>storageState</code> to disk on first login and reloads it thereafter</strong> — collapsing most logins into a cookie restore.</p>
+<pre><code>authenticatedPage: async ({ page, env, testUser }, use) =&gt; {
+  const key = testUser.uniqueName;
+
+  if (await isStorageStateValid(env, key)) {
+    // Fast path: reuse a previously saved session
+    await loadStorageStateToPage(page, env, key);
+  } else {
+    // Slow path: log in via the UI, then save the session for next time
+    await performUserLogin({ page, testUser });
+    await saveStorageState(page, env, key);
+  }
+
+  await use(page); // test receives an already-authenticated page
+}</code></pre>
+<p>The first test for a given user pays the login cost; every subsequent test (this run or the next) restores cookies in milliseconds. The fixture hides the entire branch — the test just asks for <code>authenticatedPage</code> and starts doing work.</p>
+<figure><img src="https://laxminarayanaboga.github.io/articles/assets/diagrams/fixtures-as-a-runtime-system-2.png" alt="Diagram: Playwright Fixtures as a Runtime System: Five Patterns Beyond `page` (2)"></figure><blockquote>
+<p>Keying the cache by a stable <code>uniqueName</code> means each distinct user gets its own reusable session, and sessions survive across runs — so your <em>second</em> CI run is even faster than your first.</p>
+</blockquote>
+<hr>
+<h2>Pattern 4 — Building your own browser context inside a fixture</h2>
+<p>Sometimes the default <code>page</code> doesn&#39;t fit. A back‑office tool might demand a desktop‑only user agent, a fixed viewport, or — critically — a <strong>fully isolated context</strong> because the application shares a single server‑side session per context and you need independent sessions in parallel.</p>
+<p>A fixture can launch its own browser, build a bespoke context, and clean it all up on teardown:</p>
+<pre><code>isolatedDesktopPage: async ({ headless }, use) =&gt; {
+  const { chromium } = require(&quot;playwright&quot;);
+  const browser = await chromium.launch({ headless });
+
+  const context = await browser.newContext({
+    viewport: { width: 1366, height: 768 }, // force desktop layout
+    userAgent: &quot;Desktop-Agent-Browser&quot;,     // app refuses mobile UAs
+  });
+
+  const page = await context.newPage();
+  await use(page);
+
+  await browser.close(); // teardown closes browser + context together
+}</code></pre>
+<p>This is the escape hatch from project‑level config. The Playwright config&#39;s device/viewport settings apply to the default <code>page</code>; when one slice of your suite needs different rules, you don&#39;t fork the config — you express the requirement <em>locally</em> in a fixture, and teardown guarantees the extra browser is always closed. Combine it with Pattern 3 and you get isolated, pre‑authenticated desktop contexts on demand.</p>
+<hr>
+<h2>Pattern 5 — Fixtures that read <code>testInfo</code></h2>
+<p>Fixtures receive a third argument, <code>testInfo</code>, giving them access to the running test&#39;s own metadata — its title, annotations, project, retry count, and more. That lets a fixture <strong>derive its value from the test itself</strong>, with zero per‑test wiring.</p>
+<pre><code>// Pull an identifier out of the test's title and resolve it
+adminUser: async ({ testUsers }, use, testInfo) =&gt; {
+  const uniqueName = testInfo.title.match(/adminUser: &quot;(.*?)&quot;/)?.[1];
+  await use(testUsers.getByUniqueName(uniqueName));
+},
+
+// Adjust behaviour based on runtime context
+verboseArtifacts: async ({}, use, testInfo) =&gt; {
+  const isRetry = testInfo.retry &gt; 0;
+  await use({ trace: isRetry, screenshots: isRetry });
+},</code></pre>
+<p>This is what makes data‑driven suites feel effortless: the <em>test</em> declares what it wants in its title or annotations, and the <em>fixture</em> reads it back and produces the right object. No parameter threading, no lookup tables in the test body — the fixture is the single point that maps &quot;what the test said it needs&quot; to &quot;the prepared thing.&quot;</p>
+<hr>
+<h2>How the patterns compose</h2>
+<p>The real power shows up when these stack. A single test can pull:</p>
+<ul>
+<li>a <strong>worker‑scoped</strong> DB connection (Pattern 1),</li>
+<li>a <strong><code>testInfo</code>‑derived</strong> user (Pattern 5),</li>
+<li>an <strong>isolated desktop context</strong> for that user (Pattern 4),</li>
+<li>already <strong>authenticated</strong> via cached <code>storageState</code> (Pattern 3),</li>
+<li>with a <strong>guard fixture</strong> that restores any global state it touches (Pattern 2):</li>
+</ul>
+<pre><code>test('back-office reviewer can action a record. adminUser: &quot;id-501-reviewer&quot;',
+  async ({ dbConnection, authenticatedDesktopPage, restoreSharedAvailability }) =&gt; {
+    // dbConnection: reused across the worker
+    // authenticatedDesktopPage: isolated context, pre-logged-in
+    // restoreSharedAvailability: cleanup is already guaranteed
+    await doTheActualTest(authenticatedDesktopPage, dbConnection);
+  }
+);</code></pre>
+<p>The test body is three lines of <em>intent</em>. Every expensive setup, every cleanup, every isolation guarantee lives in the fixture layer — declared once, reused everywhere, and torn down automatically.</p>
+<hr>
+<h2>Lessons learned</h2>
+<ul>
+<li><strong>Scope is a performance lever, not a detail.</strong> Worker‑scope the expensive shared resources; test‑scope everything that carries state. Getting this wrong is either slow (over‑isolated) or flaky (over‑shared).</li>
+<li><strong>Encode cleanup as a teardown‑only fixture.</strong> A no‑op value plus post‑<code>use</code> restoration turns &quot;don&#39;t forget to undo this&quot; into a structural guarantee that survives failures and early returns.</li>
+<li><strong>Cache authentication on disk.</strong> Keying <code>storageState</code> by a stable identifier collapses thousands of logins into cookie restores and makes repeat runs faster.</li>
+<li><strong>A fixture can build its own browser.</strong> When the default <code>page</code> doesn&#39;t fit, express the requirement locally and let teardown close what you opened.</li>
+<li><strong>Let fixtures read <code>testInfo</code>.</strong> Deriving values from the test&#39;s own metadata removes per‑test wiring entirely.</li>
+</ul>
+<p>Treat fixtures as the runtime system they are — with scopes, lifecycles, and teardown guarantees — and test setup stops being boilerplate you copy around. It becomes a small, composable layer the whole suite quietly stands on.</p>
+<hr>
+<p><em>Written from real‑world experience building a large, multi‑environment Playwright suite. All names, values, and examples are generic illustrations of the patterns described.</em></p>
+
+    <hr>
+    <p><em>Originally published at <a href="https://laxminarayanaboga.github.io/articles/fixtures-as-a-runtime-system.html">https://laxminarayanaboga.github.io/articles/fixtures-as-a-runtime-system.html</a></em></p>
+  </article>
+</body>
+</html>
