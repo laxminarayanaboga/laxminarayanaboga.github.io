@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="canonical" href="https://laxminarayanaboga.github.io/articles/white-label-multi-tenant-testing.html">
+  <title>One Suite, Many Brands: A White‑Label / Multi‑Tenant Testing Strategy</title>
+</head>
+<body>
+  <article>
+<h1>One Suite, Many Brands: A White‑Label / Multi‑Tenant Testing Strategy</h1>
+<blockquote>
+<p>When the same product ships under several brands, the naive answers are &quot;copy the suite per brand&quot; or &quot;test only one and hope.&quot; Both are wrong. Here&#39;s how a single suite covers many tenants through shared journeys, a layered data‑resolution fallback, and per‑tenant overrides.</p>
+</blockquote>
+<p>A white‑label product is one codebase wearing many faces: same loan journey, same checkout, same account flow — different logo, colours, copy, URLs, and a handful of genuinely different business rules per brand. Testing it is a trap. Duplicate the suite per brand and every fix becomes N fixes and the copies drift. Test one brand and the others ship untested. Parameterise badly and you get a tangle of <code>if (brand === &#39;x&#39;)</code> that nobody can read.</p>
+<p>This article is about the middle path that scales: <strong>one set of journeys, executed per tenant, with data resolved through a fallback hierarchy</strong> so brands share everything by default and override only what genuinely differs. The example brands and values here are invented.</p>
+<hr>
+<h2>The principle: share the journey, vary the data</h2>
+<p>The insight that makes multi‑tenant testing tractable: for a white‑label product, the <em>journey</em> is almost always identical across brands — it&#39;s the <strong>data</strong> that varies. So you write the scenario once and let each brand supply its own data through a resolver, falling back to shared defaults for everything it doesn&#39;t override.</p>
+<figure><img src="https://laxminarayanaboga.github.io/articles/assets/diagrams/white-label-multi-tenant-testing-1.png" alt="Diagram: One Suite, Many Brands: A White‑Label / Multi‑Tenant Testing Strategy (1)"></figure><p>You are not maintaining N suites. You are maintaining one suite and N (small) data overlays.</p>
+<hr>
+<h2>Layer 1 — Brand as a tag dimension</h2>
+<p>In a tag‑driven suite, the brand is just another orthogonal tag family. A scenario outline lists the shared steps once, then attaches brand‑specific example tables — each tagged with its brand:</p>
+<pre><code>Feature: accessibility tests for application pages
+
+  Scenario Outline: a11y scan — brand: &lt;brand&gt;, page: &quot;&lt;pageName&gt;&quot;
+    Given I access the application start page
+    Given Run accessibility tests pageName:&quot;&lt;pageName&gt;&quot; device: &quot;&lt;device&gt;&quot;
+
+    @brand-a
+    Examples:
+      | brand   | pageName          | device  |
+      | BRAND_A | application-start | desktop |
+
+    @brand-b
+    Examples:
+      | brand   | pageName          | device  |
+      | BRAND_B | application-start | desktop |</code></pre>
+<p>The journey steps are written <strong>once</strong>. Each brand contributes a row, tagged so you can run one brand, a subset, or all:</p>
+<pre><code># All brands
+npx bddgen --tags &quot;@accessibility and @preprod&quot;
+# Just one brand while debugging
+npx bddgen --tags &quot;@accessibility and @brand-a and @preprod&quot;</code></pre>
+<p>The <code>brand</code> value flows into the steps as a fixture, where it becomes the key for resolving everything brand‑specific — URLs, data, expectations.</p>
+<hr>
+<h2>Layer 2 — The 4‑level data‑resolution fallback</h2>
+<p>This is the engine of the whole strategy. Every piece of test data is resolved through a hierarchy that tries the <strong>most specific</strong> location first and falls back to <strong>shared defaults</strong>. The two axes that vary are <em>environment</em> and <em>brand</em>, giving four candidates in priority order:</p>
+<pre><code>async function resolveTestDataPath(section, env, brand, fileName) {
+  brand = (brand || 'default').toLowerCase();
+  env   = (env   || 'default').toLowerCase();
+
+  const candidates = [
+    `tests/test-data/${section}/${env}/${brand}/${fileName}`,   // 1. exact: this env, this brand
+    `tests/test-data/${section}/${env}/default/${fileName}`,    // 2. this env, any brand
+    `tests/test-data/${section}/default/${brand}/${fileName}`,  // 3. any env, this brand
+    `tests/test-data/${section}/default/default/${fileName}`,   // 4. shared baseline
+  ];
+
+  for (const candidate of candidates) {
+    if (await fs.pathExists(candidate)) return candidate;
+  }
+  throw new Error(`Test data not found. Tried:\n${candidates.join('\n')}`);
+}</code></pre>
+<p>Read that priority list as a sentence: <em>&quot;Use this brand&#39;s data for this environment if it exists; otherwise this environment&#39;s shared data; otherwise this brand&#39;s cross‑environment data; otherwise the shared baseline.&quot;</em></p>
+<figure><img src="https://laxminarayanaboga.github.io/articles/assets/diagrams/white-label-multi-tenant-testing-2.png" alt="Diagram: One Suite, Many Brands: A White‑Label / Multi‑Tenant Testing Strategy (2)"></figure><p>The power of this is <strong>inheritance by default</strong>. A new brand starts with <em>zero</em> data files — it inherits the shared baseline for everything. You add an override file only for the specific thing that actually differs for that brand. The directory tree becomes a precise map of &quot;what&#39;s truly brand‑specific&quot; versus &quot;what&#39;s shared,&quot; because shared data simply isn&#39;t duplicated.</p>
+<hr>
+<h2>Layer 3 — Per‑tenant config that isn&#39;t data files</h2>
+<p>Some brand variation isn&#39;t a JSON fixture — it&#39;s a URL, a secret, a feature flag. Resolve those by brand‑keyed environment variables, so the same step targets the right tenant without branching:</p>
+<pre><code>// One line resolves the right host for whichever brand the scenario is running
+const urlHost = process.env[`${brand}_URL`];        // BRAND_A_URL, BRAND_B_URL, ...
+const url = `${urlHost}${pathFor(functionality)}`;</code></pre>
+<p>Brand‑scoped artifacts (sessions, reports, caches) follow the same discipline — the brand is part of the key, so tenants never collide:</p>
+<pre><code>function storageFilePath(env, brand, userId) {
+  return path.join(base, `${env}-${brand.toLowerCase()}-${userId}-storageState.json`);
+}
+// desktop-preprod-brand_a-checkout.json, etc.</code></pre>
+<p>The rule: <strong>brand is a coordinate, never a branch.</strong> You key on it — in a path, an env‑var name, a filename — rather than writing <code>if (brand === ...)</code>.</p>
+<hr>
+<h2>Layer 4 — When business rules genuinely differ</h2>
+<p>Sometimes a brand really does behave differently — a different decline reason, an extra step, a different product. The disciplined way to express that is <em>still data</em>, not control flow. Carry the brand‑specific expectation in the example table or a brand‑resolved expectation file, so the journey stays single:</p>
+<pre><code>    @brand-a
+    Examples:
+      | brand   | decision | expectedOutcome              |
+      | BRAND_A | decline  | tc_decline_no_offers         |
+
+    @brand-b
+    Examples:
+      | brand   | decision | expectedOutcome              |
+      | BRAND_B | decline  | tc_decline_alternative_offer |</code></pre>
+<p>The step reads <code>expectedOutcome</code> and asserts against the brand&#39;s resolved expectation file. The <em>behaviour</em> differs; the <em>test code</em> doesn&#39;t. When you genuinely can&#39;t avoid a branch (a brand has an extra screen), isolate it behind a brand‑resolved page object or a tagged sub‑scenario — never an inline conditional scattered through a shared step.</p>
+<hr>
+<h2>The sensitivity caveat — genericise hard</h2>
+<p>White‑label testing is the highest‑sensitivity topic in this series, because brand names, URLs, and divergent business rules <em>are</em> the product&#39;s commercial structure. If you write about this pattern publicly, strip it to the mechanism:</p>
+<ul>
+<li>Use placeholder brands (<code>BRAND_A</code>, <code>BRAND_B</code>) — never real ones.</li>
+<li>Use <code>*_URL</code> env‑var <em>shapes</em>, never real hosts or the count of real brands.</li>
+<li>Show the <em>fallback mechanism</em> and the <em>&quot;brand is a coordinate&quot;</em> rule — not the actual matrix of which brand overrides what, which can reveal real business differences.</li>
+</ul>
+<p>The pattern is genuinely reusable; the specific overlay for a real product is not shareable. Keep the article at the level of the resolver and the directory convention.</p>
+<hr>
+<h2>Lessons learned</h2>
+<ul>
+<li><strong>Share the journey, vary the data.</strong> For a white‑label product the flow is the same across brands — write it once and let a resolver supply per‑brand data.</li>
+<li><strong>Make fallback the default.</strong> A most‑specific‑to‑shared resolution hierarchy means a new brand inherits everything and overrides only what truly differs; shared data is never duplicated.</li>
+<li><strong>Brand is a coordinate, not a branch.</strong> Key on the brand in paths, env‑var names, and filenames — <code>process.env[</code>${brand}_URL<code>]</code>, <code>env-brand-user.json</code> — instead of <code>if (brand === ...)</code>.</li>
+<li><strong>Keep brand artifacts brand‑scoped.</strong> Putting the brand in every cache/report/session key stops tenants from colliding in shared runs.</li>
+<li><strong>Express divergent rules as data, isolate real branches.</strong> Carry differing expectations in example tables or brand‑resolved files; when a real code branch is unavoidable, hide it behind a brand‑resolved page object, never an inline conditional.</li>
+<li><strong>Genericise hard before publishing.</strong> Brand names, URLs, and the override matrix are commercial structure — share the mechanism, not the matrix.</li>
+</ul>
+<p>The trap of multi‑tenant testing is choosing between duplication and under‑coverage. The escape is to stop thinking in suites and start thinking in <em>one suite plus thin per‑tenant overlays</em>: shared journeys, a fallback resolver, and brand as a coordinate. One thing to maintain, N brands covered, and a directory tree that tells you exactly what&#39;s actually different.</p>
+<hr>
+<p><em>Written from real‑world experience building a large, multi‑environment Playwright suite. All brand names, URLs, business rules, and examples are invented, generic illustrations of the patterns described.</em></p>
+
+    <hr>
+    <p><em>Originally published at <a href="https://laxminarayanaboga.github.io/articles/white-label-multi-tenant-testing.html">https://laxminarayanaboga.github.io/articles/white-label-multi-tenant-testing.html</a></em></p>
+  </article>
+</body>
+</html>

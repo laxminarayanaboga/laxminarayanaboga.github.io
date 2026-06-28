@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="canonical" href="https://laxminarayanaboga.github.io/articles/lighthouse-k6-quality-gates.html">
+  <title>Quality Gates Beyond Functional: Lighthouse and K6 in One Tag‑Driven Pipeline</title>
+</head>
+<body>
+  <article>
+<h1>Quality Gates Beyond Functional: Lighthouse and K6 in One Tag‑Driven Pipeline</h1>
+<blockquote>
+<p>Functional tests tell you the feature works. They say nothing about whether the page is <em>fast enough</em> or the API <em>holds up under load</em>. Here&#39;s how performance and budget checks become first‑class, tagged, gated members of the same suite — not separate tools nobody runs.</p>
+</blockquote>
+<p>A suite can be 3,000 functional tests deep and still ship a homepage that takes eight seconds to paint, or an API that falls over at 10 requests a second. Functional correctness and <em>non‑functional</em> quality are different axes, and most teams test only the first because the second lives in separate tools with separate runners that drift into disuse.</p>
+<p>This article is about pulling two non‑functional gates — <strong>Lighthouse</strong> (page‑level performance, accessibility, SEO, best‑practices budgets) and <strong>K6</strong> (API load and throughput) — into the same model as everything else: tagged for selection, thresholds as assertions, reports as artifacts, failures that break the build. Low sensitivity; the patterns are generic.</p>
+<hr>
+<h2>One pipeline, three kinds of gate</h2>
+<p>The goal is a single mental model where functional, performance‑budget, and load checks are <em>the same kind of thing</em> — a tagged slice with a pass/fail gate — even though the engines underneath differ.</p>
+<figure><img src="https://laxminarayanaboga.github.io/articles/assets/diagrams/lighthouse-k6-quality-gates-1.png" alt="Diagram: Quality Gates Beyond Functional: Lighthouse and K6 in One Tag‑Driven Pipeline (1)"></figure><p>The unifying idea: <strong>a threshold is just an assertion.</strong> A Lighthouse performance score below 0.90 should fail a test the same way a missing button does. A K6 p95 latency over budget should fail a run the same way a 500 does.</p>
+<hr>
+<h2>Lighthouse: page budgets as assertions</h2>
+<p>Lighthouse runs a real audit against a URL and returns category scores (performance, accessibility, best‑practices, SEO). On its own that&#39;s a report. To make it a <em>gate</em>, you compare each score against a configured threshold and assert.</p>
+<p><strong>Thresholds live as data</strong>, per device, with sensible shared defaults:</p>
+<pre><code>const defaultThresholds = {
+  performance:     0.90,
+  accessibility:   0.90,
+  'best-practices':0.90,
+  seo:             0.90,
+};
+
+export const thresholds = {
+  desktop: { ...defaultThresholds },
+  mobile:  { ...defaultThresholds /* override per device if needed */ },
+};</code></pre>
+<p><strong>The device profiles also live as data</strong> — throttling, form factor, screen emulation — so a &quot;mobile&quot; run faithfully simulates a constrained device instead of a developer&#39;s gigabit laptop:</p>
+<pre><code>export const lighthouseConfig = {
+  mobile: {
+    extends: 'lighthouse:default',
+    settings: {
+      formFactor: 'mobile',
+      throttlingMethod: 'simulate',
+      throttling: { /* FAST_4G-like profile */ },
+      screenEmulation: { mobile: true, width: 360, height: 640, deviceScaleFactor: 2 },
+    },
+  },
+  desktop: { extends: 'lighthouse:default', settings: { formFactor: 'desktop', /* ... */ } },
+};</code></pre>
+<p><strong>The step ties it together</strong>: run the audit, attach the HTML report, then assert every category against its budget.</p>
+<pre><code>Given('Run lighthouse tests {string}, {string}', async ({ brand, $testInfo }, functionality, device) =&gt; {
+  const url = `${process.env[`${brand}_URL`]}${pathFor(functionality)}`;
+
+  const result = await runLighthouseTest(url, functionality, device);
+
+  // Artifact: the full HTML report, attached to the run for humans
+  const reportPath = await saveReport(brand, functionality, device, result.report);
+  attachFileToReport($testInfo, reportPath, 'text/html', 'lighthouse report');
+
+  // Gate: every category score must meet its budget, or the test fails
+  validateScores(result, thresholds[device]);
+});
+
+function validateScores(result, budget) {
+  const c = result.lhr.categories;
+  expect(c.performance.score).toBeGreaterThanOrEqual(budget.performance);
+  expect(c.accessibility.score).toBeGreaterThanOrEqual(budget.accessibility);
+  expect(c['best-practices'].score).toBeGreaterThanOrEqual(budget['best-practices']);
+  expect(c.seo.score).toBeGreaterThanOrEqual(budget.seo);
+}</code></pre>
+<p>Now a performance regression on a key page fails CI like any other test — with the full Lighthouse report attached so you can see <em>why</em>.</p>
+<blockquote>
+<p>Keep budgets in data, not in the step. When a page legitimately needs a different bar, you edit a config object, not test logic — and the override is visible and reviewable.</p>
+</blockquote>
+<hr>
+<h2>K6: load thresholds as the pass/fail contract</h2>
+<p>K6 answers a question Playwright can&#39;t: <em>does the API hold up when hammered?</em> It runs outside the browser, generating concurrent traffic, and — crucially — has a built‑in <strong>thresholds</strong> concept that is itself the gate. If a threshold is breached, K6 exits non‑zero, which fails the pipeline.</p>
+<p><strong>Scenarios as data</strong>, mirroring the suite‑as‑data philosophy — smoke, load, stress, spike — each a named load profile:</p>
+<pre><code>const defaultConfig = {
+  thresholds: {
+    http_req_duration: ['p(75)&lt;800', 'p(95)&lt;1200', 'p(99)&lt;1500'],  // latency budget
+    http_req_failed:   ['rate&lt;0.05'],                               // error budget
+    http_reqs:         ['count&gt;0'],                                 // sanity: we actually sent traffic
+  },
+};
+
+export const configurations = {
+  smoke:  createConfig({ /* 1 TPS for 30s — does the test even work? */ }),
+  load:   createConfig({ /* 3 TPS for 3m — normal expected load */ }),
+  stress: createConfig({ /* 5 TPS for 5m — above normal */ }),
+  spike:  createConfig({ /* 1→10→1 TPS — sudden surge */ }),
+};</code></pre>
+<p><strong>The runner picks scenario and environment from env vars</strong> — the same run‑contract pattern the functional containers use, so the <em>same script</em> runs locally and in CI against any environment:</p>
+<pre><code>const environment = __ENV.ENVIRONMENT || 'local';
+const scenario    = __ENV.SCENARIO    || 'smoke';
+
+export const options = {
+  ...configurations[scenario],
+  thresholds: { ...configurations[scenario].thresholds },
+};
+
+export default function () {
+  const res = http.post(`${environments[environment]}/endpoint`, payload);
+  check(res, { 'status is 2xx': (r) =&gt; r.status &gt;= 200 &amp;&amp; r.status &lt; 300 });
+}</code></pre>
+<pre><code># Selecting a load profile is just two env vars — the gate is built in
+k6 run -e ENVIRONMENT=preprod -e SCENARIO=load \
+       runners/api-runner.js \
+       --out json=performance-reports/results.json</code></pre>
+<p>Because the thresholds <em>are</em> the exit code, you don&#39;t write separate assertions — a breached latency or error budget fails the run by itself.</p>
+<hr>
+<h2>Bonus: load tests that catch concurrency bugs</h2>
+<p>K6&#39;s concurrency is good for more than throughput numbers — it reproduces <strong>race conditions</strong> functional tests can&#39;t. Fire several simultaneous requests that <em>should</em> be mutually exclusive (e.g. only one can succeed) and assert the business invariant holds under contention:</p>
+<pre><code>// Send N concurrent requests for the same entity; exactly one should win.
+// A functional test sends them one at a time and never sees the race.
+const responses = http.batch(concurrentRequests);
+const approved = responses.filter((r) =&gt; r.json('status') === 'APPROVED').length;
+check(null, { 'exactly one approved under contention': () =&gt; approved === 1 });</code></pre>
+<p>This is load tooling doing <em>correctness</em> work — the kind of bug that only appears when two requests arrive in the same millisecond.</p>
+<hr>
+<h2>Folding both into the tag‑driven model</h2>
+<p>Neither tool needs a bespoke pipeline. Each becomes a tagged suite in the same suite‑as‑data map that provisions every other slice:</p>
+<pre><code>const testSuites = {
+  lighthouse:  { tags: &quot;@lighthouse&quot;,   workers: 4,  cpu: 4, memory: 8192 },
+  performance: { tags: &quot;@performance&quot;,  workers: 1,  cpu: 4, memory: 8192 }, // K6 manages its own concurrency
+  regression:  { tags: &quot;@regression&quot;,   workers: 12, cpu: 8, memory: 16384 },
+};</code></pre>
+<p>The orchestrator runs them in the right order, archives their reports to the same object store, and alerts on failure through the same channel. Performance and load stop being &quot;that thing we run before a big release&quot; and become continuous gates.</p>
+<figure><img src="https://laxminarayanaboga.github.io/articles/assets/diagrams/lighthouse-k6-quality-gates-2.png" alt="Diagram: Quality Gates Beyond Functional: Lighthouse and K6 in One Tag‑Driven Pipeline (2)"></figure><hr>
+<h2>Lessons learned</h2>
+<ul>
+<li><strong>A threshold is just an assertion.</strong> A Lighthouse score below budget or a K6 latency over budget should fail the build exactly like a broken button does.</li>
+<li><strong>Keep budgets and load profiles as data.</strong> Per‑device thresholds and named scenarios (smoke/load/stress/spike) make the bar visible, reviewable, and easy to tune without touching test logic.</li>
+<li><strong>Simulate the constrained device.</strong> A &quot;mobile&quot; Lighthouse run with real throttling catches regressions a developer&#39;s fast machine hides.</li>
+<li><strong>Let K6 thresholds be the gate.</strong> Because a breached threshold exits non‑zero, the load contract enforces itself — no separate assertions needed.</li>
+<li><strong>Use load for correctness, not just speed.</strong> Concurrent, mutually‑exclusive requests reproduce race conditions that sequential functional tests structurally cannot see.</li>
+<li><strong>Reuse the tag pipeline for both.</strong> <code>@lighthouse</code> and <code>@performance</code> plug into the same selection, ordering, reporting, and alerting machinery — no parallel infrastructure to rot.</li>
+</ul>
+<p>Functional tests prove the software <em>does the right thing</em>. Lighthouse and K6, folded into the same tag‑driven pipeline, prove it does so <em>fast enough</em> and <em>under enough load</em> — and because they&#39;re gated and continuous, those properties stop quietly regressing between releases.</p>
+<hr>
+<p><em>Written from real‑world experience building a large, multi‑environment Playwright suite. All URLs, thresholds, scenarios, and examples are generic illustrations of the patterns described.</em></p>
+
+    <hr>
+    <p><em>Originally published at <a href="https://laxminarayanaboga.github.io/articles/lighthouse-k6-quality-gates.html">https://laxminarayanaboga.github.io/articles/lighthouse-k6-quality-gates.html</a></em></p>
+  </article>
+</body>
+</html>

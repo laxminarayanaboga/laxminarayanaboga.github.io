@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="canonical" href="https://laxminarayanaboga.github.io/articles/tag-driven-test-execution.html">
+  <title>Tag‑Driven Test Execution: Turning 3,000 Playwright Tests Into a Schedulable Pipeline</title>
+</head>
+<body>
+  <article>
+<h1>Tag‑Driven Test Execution: Turning 3,000 Playwright Tests Into a Schedulable Pipeline</h1>
+<blockquote>
+<p>How a small tag vocabulary and a &quot;suite‑as‑data&quot; model let us slice thousands of tests into precisely‑tuned, parallelisable batches.</p>
+</blockquote>
+<p>When a Playwright suite is small, &quot;run the tests&quot; means <code>npx playwright test</code>. When it crosses a few thousand, that command becomes useless: it&#39;s too slow to gate a pull request, too coarse to debug a single area, and too blunt to tune for cost. You stop thinking about <em>the suite</em> and start thinking about <strong>which slice, with how much parallelism, in what order</strong>.</p>
+<p>This article is about the execution model that makes that tractable: a layered <strong>tag taxonomy</strong> as the query language, and a <strong>suite‑as‑data</strong> structure that turns each slice into a tunable, schedulable unit. It&#39;s the layer that sits between your tests and whatever runs them.</p>
+<blockquote>
+<p>If you&#39;ve read the earlier piece on scaling the suite, you&#39;ve seen the tags in passing. Here we go deeper into <em>execution</em> — resource tuning per slice, parallel vs sequential grouping, and reusable run profiles.</p>
+</blockquote>
+<hr>
+<h2>Step 1 — Tags are the query language for &quot;which tests&quot;</h2>
+<p>Every scenario carries a handful of orthogonal tags. The trick is that the tag <em>families</em> are independent, so you can intersect them to address any slice precisely:</p>
+<pre><code>Tag family   Question it answers       Examples                         
+-----------  ------------------------  ---------------------------------
+Priority     How critical?             @p1 @p2 @p3 @p4                  
+Suite        What area?                @smoke @regression @accessibility
+Environment  Where is it valid?        @local @qa @preprod @prod        
+Capability   What does it need?        @api @mobile                     
+Concurrency  Can it run in parallel?   @parallel @sequential            
+Lifecycle    Should it ever auto‑run?  @manual @slow                    </code></pre>
+<p>The test runner accepts a <strong>boolean tag expression</strong>, so a precise slice is just an intersection:</p>
+<pre><code># Critical-path, parallel-safe, preprod, excluding manual-only specs
+npx bddgen --tags &quot;@regression and @parallel and @p1 and @preprod and not @manual&quot;
+npx playwright test</code></pre>
+<p>Two rules keep this honest at scale:</p>
+<ul>
+<li><strong><code>not @manual</code> everywhere.</strong> Human‑only checks stay documented as tests but never break automation.</li>
+<li><strong>Tag at the row level.</strong> Data‑driven tests can attach <em>different</em> tags to different data rows, so the same scenario contributes a <code>@p1 @qa</code> row to one pipeline and a <code>@p4 @prod</code> row to another.</li>
+</ul>
+<p>A tag expression alone, though, only answers <em>which tests</em>. It says nothing about <em>how to run them</em>. That&#39;s the next layer.</p>
+<hr>
+<h2>Step 2 — A &quot;suite&quot; is a tag expression <strong>plus</strong> its execution profile</h2>
+<p>The key insight at scale: a tag expression and its runtime settings belong together. A heavy UI batch wants many workers and lots of memory; a stateful sequential flow wants exactly one worker. So we model each runnable slice as <strong>data</strong> — a named object pairing the tags with its resource and concurrency profile:</p>
+<pre><code>const testSuites = {
+  &quot;regression-non-webservice&quot;: {
+    tags:        &quot;@regression and not @p4 and not @webservice&quot;,
+    workers:     12,        // wide parallelism — independent UI checks
+    retries:     2,
+    maxFailures: 25,
+    cpu:         8,
+    memory:      16384,
+  },
+  &quot;checkout-flow-sequential&quot;: {
+    tags:    &quot;@flow-sequential and @p2&quot;,
+    workers: 1,             // order-dependent — must serialise
+    retries: 2,
+    cpu:     4,
+    memory:  8192,
+  },
+  &quot;api&quot;: {
+    tags:    &quot;@api&quot;,
+    workers: 12,            // cheap, fast, highly parallel
+    retries: 2,
+    cpu:     4,
+    memory:  8192,
+  },
+};</code></pre>
+<p>This single move — <strong>treating a suite as a configuration object, not a hard‑coded command</strong> — is what makes everything downstream composable. Adding coverage for a new area is adding an entry to this map. The tag expression decides <em>what runs</em>; the rest of the object decides <em>how</em>.</p>
+<figure><img src="https://laxminarayanaboga.github.io/articles/assets/diagrams/tag-driven-test-execution-1.png" alt="Diagram: Tag‑Driven Test Execution: Turning 3,000 Playwright Tests Into a Schedulable Pipeline (1)"></figure><hr>
+<h2>Step 3 — Each suite is a two‑stage run</h2>
+<p>Because the tag layer compiles down before execution, every suite is always two steps: <strong>generate the filtered test set, then run it</strong> with that suite&#39;s profile.</p>
+<pre><code>function runSuite(name, suite) {
+  // 1. Materialise only the tests matching this suite's tags
+  sh(`npx bddgen --tags &quot;${suite.tags} and @preprod and not @manual&quot;`);
+
+  // 2. Execute them with this suite's resource profile
+  sh(
+    `npx playwright test` +
+    ` --workers=${suite.workers ?? 6}` +
+    ` --retries=${suite.retries ?? 1}` +
+    ` --max-failures=${suite.maxFailures ?? 25}` +
+    ` --project=${suite.project ?? &quot;chromium&quot;}`
+  );
+}</code></pre>
+<p>Notice the environment tag (<code>@preprod</code>) is appended at run time. The <em>same</em> suite definition can target different environments by changing one suffix — you don&#39;t duplicate the suite per environment.</p>
+<hr>
+<h2>Step 4 — Order matters: parallel groups vs sequential islands</h2>
+<p>Not all suites can run at once. Some are independent and should overlap to compress wall‑clock time; others mutate shared state and must run alone. We encode this as an <strong>ordered list</strong> with explicit <strong>parallel groups</strong>:</p>
+<pre><code>const executionPlan = [
+  { kind: &quot;parallel&quot;, suites: [&quot;smoke-p1&quot;, &quot;smoke-p2&quot;] }, // overlap — independent
+  { kind: &quot;single&quot;,   suites: [&quot;data-mutating-flow&quot;] },   // isolate — touches shared state
+  { kind: &quot;parallel&quot;, suites: [&quot;api&quot;, &quot;ui-regression&quot;] }, // overlap again
+];</code></pre>
+<p>The runner walks the plan: parallel groups fan out and join; single suites run alone. Within a suite, Playwright&#39;s own workers parallelise; across suites, the plan controls overlap.</p>
+<figure><img src="https://laxminarayanaboga.github.io/articles/assets/diagrams/tag-driven-test-execution-2.png" alt="Diagram: Tag‑Driven Test Execution: Turning 3,000 Playwright Tests Into a Schedulable Pipeline (2)"></figure><p>This two‑level parallelism — <em>workers inside a suite, groups across suites</em> — is what lets thousands of tests finish in a fraction of their serial time without letting order‑dependent flows trample each other.</p>
+<hr>
+<h2>Step 5 — Run profiles: named scopes for &quot;what to run today&quot;</h2>
+<p>Different triggers need different subsets. A pull‑request check wants the critical path only; a nightly run wants everything; a developer debugging one area wants just that area. Rather than memorising tag expressions, we predefine <strong>named profiles</strong> that select an ordered list of suites:</p>
+<pre><code>const profiles = {
+  &quot;p1&quot;:        [&quot;smoke-p1&quot;],
+  &quot;smoke&quot;:     [&quot;smoke-p1&quot;, &quot;smoke-p2&quot;],
+  &quot;regression&quot;:[&quot;api&quot;, &quot;ui-regression&quot;, &quot;data-mutating-flow&quot;],
+  &quot;all&quot;:       executionPlanOrder,   // the full ordered list
+};
+
+// Pick a profile at run time
+const scope = process.env.SUITE_SCOPE || &quot;smoke&quot;;
+const suitesToRun = profiles[scope];</code></pre>
+<p>Plus an <strong>escape hatch</strong> for ad‑hoc runs — pass a raw tag expression and the whole plan collapses to a single custom suite:</p>
+<pre><code>const customSuite = process.env.CUSTOM_TAGS &amp;&amp; {
+  custom: { tags: process.env.CUSTOM_TAGS, workers: 6, retries: 1 },
+};
+const finalSuites = customSuite ?? selectFrom(profiles[scope]);</code></pre>
+<p>Now the entire suite is driven by two knobs: a <strong>profile name</strong> (which predefined slice) or a <strong>custom tag expression</strong> (anything else). Everything downstream — local runs, CI, scheduled jobs — consumes the same model.</p>
+<hr>
+<h2>Why this model scales</h2>
+<p>The payoff of &quot;suite‑as‑data + profiles&quot; is that <em>every</em> execution context becomes the same shape:</p>
+<ul>
+<li><strong>Locally</strong>, a developer runs <code>SUITE_SCOPE=regression</code> or passes <code>CUSTOM_TAGS=&quot;@my-area&quot;</code>.</li>
+<li><strong>In CI</strong>, a pull request runs the <code>p1</code> profile; main runs <code>smoke</code>.</li>
+<li><strong>On a schedule</strong>, a nightly job runs <code>all</code>.</li>
+<li><strong>In the cloud</strong>, each suite object maps one‑to‑one onto an isolated compute job with exactly its declared CPU/memory (the subject of the next article).</li>
+</ul>
+<p>Because the suite definitions are plain data, they&#39;re portable. The same map that drives a local Node script can be read by a CI matrix, a container orchestrator, or an infrastructure‑as‑code template — no rewriting, just a different consumer.</p>
+<hr>
+<h2>Lessons learned</h2>
+<ul>
+<li><strong>Make tags orthogonal.</strong> Independent tag families (priority, area, environment, capability, concurrency) intersect to address any slice precisely. Overlapping or redundant tags destroy this.</li>
+<li><strong><code>not @manual</code> is non‑negotiable.</strong> It lets Gherkin double as documentation without ever breaking a run.</li>
+<li><strong>A suite is data, not a command.</strong> Pairing a tag expression with its resource/concurrency profile is the move that makes everything composable and portable.</li>
+<li><strong>Tune parallelism per slice.</strong> Wide workers for independent batches; a single worker for order‑dependent flows. Two‑level parallelism (workers × groups) compresses wall‑clock time safely.</li>
+<li><strong>Expose profiles, not tag expressions.</strong> Named scopes plus a raw‑tags escape hatch give every trigger a simple, consistent interface.</li>
+</ul>
+<p>Get this layer right and &quot;run the tests&quot; stops being a single slow command. It becomes a small vocabulary — a profile name or a tag expression — that resolves into precisely the right tests, with precisely the right parallelism, in precisely the right order. And as you&#39;ll see next, that same data model is exactly what an infrastructure‑as‑code pipeline needs to fan the work out across the cloud.</p>
+<hr>
+<p><em>Written from real‑world experience building a large, multi‑environment Playwright suite. All names, values, and examples are generic illustrations of the patterns described.</em></p>
+
+    <hr>
+    <p><em>Originally published at <a href="https://laxminarayanaboga.github.io/articles/tag-driven-test-execution.html">https://laxminarayanaboga.github.io/articles/tag-driven-test-execution.html</a></em></p>
+  </article>
+</body>
+</html>

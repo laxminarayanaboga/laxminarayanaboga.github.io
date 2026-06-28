@@ -43,6 +43,45 @@ const slugOf = (filename) =>
 
 const numOf = (filename) => parseInt(filename.match(/^article-(\d+)-/)?.[1] ?? "0", 10);
 
+// Medium has no table support, so for the Medium export we rewrite GFM pipe
+// tables into an aligned monospaced text table inside a fenced code block,
+// which Medium imports cleanly as a code block. (Site pages keep real tables.)
+function tablesToAscii(markdown) {
+  const lines = markdown.split("\n");
+  const out = [];
+  const cells = (line) =>
+    line
+      .replace(/^\s*\|?/, "")
+      .replace(/\|?\s*$/, "")
+      .split("|")
+      .map((c) => c.trim().replace(/`/g, ""));
+  for (let i = 0; i < lines.length; i++) {
+    const isSep = /^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/.test(lines[i + 1] || "");
+    if (lines[i].includes("|") && isSep) {
+      const header = cells(lines[i]);
+      const rows = [];
+      let j = i + 2;
+      while (j < lines.length && lines[j].includes("|") && lines[j].trim() !== "") {
+        rows.push(cells(lines[j]));
+        j++;
+      }
+      const widths = header.map((h, c) =>
+        Math.max(h.length, ...rows.map((r) => (r[c] || "").length))
+      );
+      const pad = (arr) => arr.map((v, c) => (v || "").padEnd(widths[c])).join("  ");
+      out.push("```text");
+      out.push(pad(header));
+      out.push(widths.map((w) => "-".repeat(w)).join("  "));
+      rows.forEach((r) => out.push(pad(r)));
+      out.push("```");
+      i = j - 1;
+    } else {
+      out.push(lines[i]);
+    }
+  }
+  return out.join("\n");
+}
+
 // Render a mermaid diagram to inline SVG via Kroki (build-time).
 async function mermaidToSvg(code) {
   const res = await fetch("https://kroki.io/mermaid/svg", {
@@ -55,6 +94,40 @@ async function mermaidToSvg(code) {
   // strip XML prolog / doctype so it inlines cleanly
   svg = svg.replace(/<\?xml[^>]*\?>/i, "").replace(/<!DOCTYPE[^>]*>/i, "").trim();
   return `<figure class="diagram">${svg}</figure>`;
+}
+
+// Render a mermaid diagram to a PNG file (for Medium, which strips inline SVG
+// but re-hosts <img> images). Returns the saved filename.
+async function mermaidToPng(code, slug, idx) {
+  const res = await fetch("https://kroki.io/mermaid/png", {
+    method: "POST",
+    headers: { "Content-Type": "text/plain" },
+    body: code,
+  });
+  if (!res.ok) throw new Error(`Kroki PNG ${res.status}: ${await res.text()}`);
+  const buf = Buffer.from(await res.arrayBuffer());
+  const dir = path.join(ASSETS_DIR, "diagrams");
+  fs.mkdirSync(dir, { recursive: true });
+  const fname = `${slug}-${idx + 1}.png`;
+  fs.writeFileSync(path.join(dir, fname), buf);
+  return fname;
+}
+
+// A marked instance for the Medium export: plain <pre> code (no highlight
+// spans) and mermaid placeholders that become <img> tags. Medium's importer
+// keeps only simple semantic HTML, so we deliberately strip styling/markup.
+function buildMediumMarkedFor() {
+  let diagramCount = 0;
+  const renderer = new marked.Renderer();
+  renderer.code = (arg, infostring) => {
+    const text = typeof arg === "object" && arg !== null ? arg.text : arg;
+    const lang = typeof arg === "object" && arg !== null ? arg.lang : infostring;
+    if ((lang || "").trim().toLowerCase() === "mermaid") {
+      return `@@MDIAGRAM_${diagramCount++}@@`;
+    }
+    return `<pre><code>${escapeHtml(text)}</code></pre>\n`;
+  };
+  return new Marked({ renderer, gfm: true });
 }
 
 // Configure marked with a custom code renderer.
@@ -202,6 +275,29 @@ ${navScript}
 `;
 }
 
+// Minimal, import-friendly page for Medium's "Import a story". No site chrome,
+// no CSS — just semantic HTML, real PNG images, and plain code blocks.
+function mediumPage({ title, bodyHtml, slug }) {
+  const canonical = `${SITE.baseUrl}/articles/${slug}.html`;
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="canonical" href="${canonical}">
+  <title>${escapeHtml(title)}</title>
+</head>
+<body>
+  <article>
+${bodyHtml}
+    <hr>
+    <p><em>Originally published at <a href="${canonical}">${canonical}</a></em></p>
+  </article>
+</body>
+</html>
+`;
+}
+
 function indexPage(articles) {
   const prefix = "../";
   const cards = articles
@@ -274,14 +370,17 @@ async function main() {
   });
 
   const total = articles.length;
+  const mediumDir = path.join(ARTICLES_DIR, "medium");
+  fs.mkdirSync(mediumDir, { recursive: true });
 
   for (let i = 0; i < articles.length; i++) {
     const a = articles[i];
+
+    // --- site page: mermaid -> inline SVG ---
     const diagrams = [];
     const md = buildMarkedFor(diagrams);
     let bodyHtml = md.parse(a.md);
 
-    // render mermaid diagrams (in parallel) and splice SVGs in
     const svgs = await Promise.all(diagrams.map((d) => mermaidToSvg(d)));
     svgs.forEach((svg, idx) => {
       bodyHtml = bodyHtml.replace(`<p>@@DIAGRAM_${idx}@@</p>`, svg).replace(`@@DIAGRAM_${idx}@@`, svg);
@@ -297,11 +396,30 @@ async function main() {
       nextA: articles[i + 1],
     });
     fs.writeFileSync(path.join(ARTICLES_DIR, `${a.slug}.html`), html);
-    console.log(`  ✓ ${a.slug}.html  (${diagrams.length} diagram${diagrams.length === 1 ? "" : "s"})`);
+
+    // --- Medium export: mermaid -> PNG <img>, plain code ---
+    const mdMedium = buildMediumMarkedFor();
+    let mediumBody = mdMedium.parse(tablesToAscii(a.md));
+    const pngs = await Promise.all(diagrams.map((d, idx) => mermaidToPng(d, a.slug, idx)));
+    pngs.forEach((fname, idx) => {
+      const url = `${SITE.baseUrl}/articles/assets/diagrams/${fname}`;
+      const img = `<figure><img src="${url}" alt="Diagram: ${escapeHtml(a.title)} (${idx + 1})"></figure>`;
+      mediumBody = mediumBody
+        .replace(`<p>@@MDIAGRAM_${idx}@@</p>`, img)
+        .replace(`@@MDIAGRAM_${idx}@@`, img);
+    });
+    fs.writeFileSync(
+      path.join(mediumDir, `${a.slug}.html`),
+      mediumPage({ title: a.title, bodyHtml: mediumBody, slug: a.slug })
+    );
+
+    console.log(`  ✓ ${a.slug}  (site + medium, ${diagrams.length} diagram${diagrams.length === 1 ? "" : "s"})`);
   }
 
   fs.writeFileSync(path.join(ARTICLES_DIR, "index.html"), indexPage(articles));
   console.log(`  ✓ index.html  (index of ${total})`);
+  console.log("\nMedium import URLs:");
+  articles.forEach((a) => console.log(`  ${SITE.baseUrl}/articles/medium/${a.slug}.html`));
   console.log("Done.");
 }
 

@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="canonical" href="https://laxminarayanaboga.github.io/articles/cicd-aws-terraform-pipeline.html">
+  <title>Running Playwright in the Cloud: A Reusable CI/CD Pipeline with Docker, Terraform &amp; AWS</title>
+</head>
+<body>
+  <article>
+<h1>Running Playwright in the Cloud: A Reusable CI/CD Pipeline with Docker, Terraform &amp; AWS</h1>
+<blockquote>
+<p>One container image, one suite‑as‑data definition, and an infrastructure‑as‑code pipeline that fans thousands of tests across the cloud — portable to GitHub Actions, GCP, or anywhere else.</p>
+</blockquote>
+<p>A large Playwright suite eventually outgrows the laptop and the single CI runner. Thousands of tests against a real, multi‑service environment need <em>parallel compute</em>, <em>isolated resources per slice</em>, <em>centralised results</em>, and <em>alerting</em> — and you want all of it reproducible, not clicked together in a console.</p>
+<p>This article walks through a cloud‑native execution pipeline built from four reusable building blocks: a <strong>Docker image</strong>, a <strong>container entrypoint script</strong>, <strong>Terraform</strong> that turns a suite definition into isolated cloud jobs, and an <strong>orchestrator</strong> that runs them in the right order with results and alerts. The specifics here use AWS, but every piece maps cleanly onto GitHub Actions, GCP, or any container platform — the design is deliberately portable.</p>
+<hr>
+<h2>The shape of the problem</h2>
+<p>Running tests in the cloud has four concerns that are easy to tangle together and important to keep separate:</p>
+<figure><img src="https://laxminarayanaboga.github.io/articles/assets/diagrams/cicd-aws-terraform-pipeline-1.png" alt="Diagram: Running Playwright in the Cloud: A Reusable CI/CD Pipeline with Docker, Terraform &amp; AWS (1)"></figure><p>Keep these as distinct layers and each becomes replaceable: swap the orchestrator without touching the image, retarget the cloud without rewriting the test command, run the <em>exact same image</em> locally that runs in production.</p>
+<hr>
+<h2>Block 1 — One Docker image, identical everywhere</h2>
+<p>The foundation is a single image built on the official Playwright base (browsers and OS deps pre‑installed), with whatever cloud CLI and tooling the run needs layered on top:</p>
+<pre><code>FROM mcr.microsoft.com/playwright:v1.59.1-noble
+
+WORKDIR /app
+COPY . /app/
+
+RUN apt update &amp;&amp; apt install -y unzip zip jq python3 &amp;&amp; \
+    # install the cloud CLI used for uploading results / sending alerts
+    curl &quot;https://example-cloud-cli.zip&quot; -o cli.zip &amp;&amp; unzip cli.zip &amp;&amp; ./install &amp;&amp; \
+    npm ci &amp;&amp; \
+    chmod +x /app/entrypoint.sh
+
+ENTRYPOINT [ &quot;/app/entrypoint.sh&quot; ]</code></pre>
+<p>Two principles make this reusable:</p>
+<ul>
+<li><strong>Pin the Playwright version to match the project.</strong> The base image tag and the <code>@playwright/test</code> dependency must agree, or browsers and the runner drift apart.</li>
+<li><strong>The image is environment‑agnostic.</strong> It contains <em>no</em> URLs, credentials, or suite choices. Everything that varies is injected at run time through environment variables. That&#39;s what lets the same artifact run on a laptop via <code>docker compose</code> and in the cloud as a job.</li>
+</ul>
+<p>A <code>docker-compose.yml</code> gives developers the identical container locally:</p>
+<pre><code>services:
+  ui-tests:
+    build: ./
+    network_mode: &quot;host&quot;
+    command: &gt;
+      sh -c &quot;npx bddgen --tags '@smoke and not @manual' &amp;&amp;
+             ENV=local npx playwright test --project=chromium&quot;
+    volumes:
+      - ./test-results:/app/test-results
+      - ./playwright-report:/app/playwright-report</code></pre>
+<p>&quot;Works on my machine&quot; stops being a phrase, because <em>my machine</em> and <em>the cloud</em> are byte‑for‑byte the same image.</p>
+<hr>
+<h2>Block 2 — The entrypoint: a portable run contract</h2>
+<p>The container&#39;s entrypoint script is the <strong>contract</strong> between the orchestration layer and the tests. It reads everything it needs from environment variables, runs the two‑stage generate‑then‑test flow, and handles results and alerting. Crucially, it&#39;s cloud‑logic kept <em>out</em> of the test code.</p>
+<pre><code>#!/bin/bash
+set -e
+
+# 1. Validate the run contract — fail fast if misconfigured
+required=(ENV PLAYWRIGHT_TEST_TAGS TEST_RESULTS_BUCKET)
+for v in &quot;${required[@]}&quot;; do
+  [ -z &quot;${!v}&quot; ] &amp;&amp; { echo &quot;Missing $v&quot;; exit 1; }
+done
+
+# 2. Defaults that callers may override
+WORKERS=&quot;${PLAYWRIGHT_TEST_WORKERS:-6}&quot;
+RETRIES=&quot;${PLAYWRIGHT_TEST_RETRIES:-1}&quot;
+
+# 3. Generate the filtered set, then run it (don't abort on test failure)
+npx bddgen --tags &quot;$PLAYWRIGHT_TEST_TAGS&quot;
+set +e
+npx playwright test --workers=&quot;$WORKERS&quot; --retries=&quot;$RETRIES&quot; \
+  --max-failures=&quot;${PLAYWRIGHT_TEST_MAX_FAILURES:-25}&quot;
+set -e
+
+# 4. Archive the report and push it to object storage
+zip -q -r report.zip playwright-report/
+upload report.zip &quot;s3://${TEST_RESULTS_BUCKET}/${PLAYWRIGHT_TEST_NAME}.zip&quot;
+
+# 5. Inspect results and alert on failure
+FAILURES=$(jq '.stats.unexpected' playwright-report/report.json)
+if [ &quot;$FAILURES&quot; -gt 0 ]; then
+  publish_alert &quot;$FAILURES tests failed. Report: ${RESULTS_LINK}&quot;
+  exit 1
+fi</code></pre>
+<p>A few patterns worth copying:</p>
+<ul>
+<li><strong>Fail fast on a missing contract.</strong> Validating required env vars up front turns a 30‑minute mystery into an instant, clear error.</li>
+<li><strong>Don&#39;t let a test failure skip the upload.</strong> Wrap the test command in <code>set +e</code> / <code>set -e</code> so results and alerts are produced <em>even when tests fail</em> — failed runs are exactly the ones you most want artifacts for.</li>
+<li><strong>Results are data.</strong> Parsing the JSON report (<code>stats.unexpected</code>) lets the same script publish metrics, name the archive by failure count, and decide whether to alert.</li>
+</ul>
+<p>This script never changes between suites or environments — only the variables passed to it do.</p>
+<hr>
+<h2>Block 3 — Terraform turns &quot;suite‑as‑data&quot; into isolated cloud jobs</h2>
+<p>This is where the previous article&#39;s <strong>suite‑as‑data</strong> model pays off enormously. That map of <code>{ tags, workers, cpu, memory }</code> objects is <em>already</em> the specification for a fleet of cloud jobs. Terraform&#39;s <code>for_each</code> expands it into one isolated, right‑sized job definition per suite — no copy‑paste, no drift.</p>
+<pre><code># The single source of truth: suite name -&gt; tags + resources
+locals {
+  test_suites = {
+    regression-ui = { tags = &quot;@regression and not @webservice&quot;, workers = 12, cpu = 8, memory = 16384 }
+    api           = { tags = &quot;@api&quot;, workers = 12, cpu = 4, memory = 8192 }
+    sequential    = { tags = &quot;@flow-sequential&quot;, workers = 1, cpu = 4, memory = 8192 }
+  }
+}
+
+# One job definition per suite, generated from the map
+resource &quot;aws_batch_job_definition&quot; &quot;playwright&quot; {
+  for_each = local.test_suites
+
+  name = &quot;${var.env}-playwright-${each.key}&quot;
+  type = &quot;container&quot;
+  platform_capabilities = [&quot;FARGATE&quot;]
+
+  container_properties = jsonencode({
+    image = &quot;${var.ecr_repo}:${var.image_tag}&quot;
+
+    # Secrets injected from the secret manager — never baked into the image
+    secrets = [
+      { name = &quot;APP_BASE_URL&quot;, valueFrom = var.app_base_url_arn },
+      { name = &quot;DB_PASSWORD&quot;,  valueFrom = &quot;${var.db_secret_arn}:password::&quot; },
+    ]
+
+    # The run contract: each suite's tags + profile become env vars
+    environment = [
+      { name = &quot;PLAYWRIGHT_TEST_NAME&quot;,    value = each.key },
+      { name = &quot;PLAYWRIGHT_TEST_TAGS&quot;,    value = &quot;${each.value.tags} and @preprod and not @manual&quot; },
+      { name = &quot;PLAYWRIGHT_TEST_WORKERS&quot;, value = tostring(each.value.workers) },
+      { name = &quot;TEST_RESULTS_BUCKET&quot;,     value = var.results_bucket },
+      { name = &quot;ENV&quot;,                     value = var.env },
+    ]
+
+    resourceRequirements = [
+      { type = &quot;VCPU&quot;,   value = tostring(each.value.cpu) },
+      { type = &quot;MEMORY&quot;, value = tostring(each.value.memory) },
+    ]
+  })
+}</code></pre>
+<p>The important ideas, all reusable on any platform:</p>
+<ul>
+<li><strong>The suite map is the single source of truth.</strong> The same structure that runs locally provisions the cloud. Add a suite once; it appears everywhere.</li>
+<li><strong>Serverless containers per suite</strong> (here, Fargate) mean each slice gets <em>its own</em> CPU/memory — a 12‑worker UI batch and a 1‑worker sequential flow no longer fight for the same box.</li>
+<li><strong>Secrets stay in a secret manager</strong>, injected by reference (<code>valueFrom</code>) at launch. The image and the Terraform code carry <em>no</em> credentials.</li>
+<li><strong>The image is pinned by tag</strong> (<code>${var.ecr_repo}:${var.image_tag}</code>), so a run is fully reproducible — you know exactly which code produced a result.</li>
+</ul>
+<figure><img src="https://laxminarayanaboga.github.io/articles/assets/diagrams/cicd-aws-terraform-pipeline-2.png" alt="Diagram: Running Playwright in the Cloud: A Reusable CI/CD Pipeline with Docker, Terraform &amp; AWS (2)"></figure><hr>
+<h2>Block 4 — Orchestration: order, parallelism, and a clean teardown</h2>
+<p>Individual jobs aren&#39;t enough; they need to run in the right order, with the right things overlapping — the <em>execution plan</em> from the previous article, now expressed as a cloud state machine. A serverless workflow engine (here, Step Functions) submits the jobs, runs parallel groups concurrently, and serialises the order‑dependent ones:</p>
+<figure><img src="https://laxminarayanaboga.github.io/articles/assets/diagrams/cicd-aws-terraform-pipeline-3.png" alt="Diagram: Running Playwright in the Cloud: A Reusable CI/CD Pipeline with Docker, Terraform &amp; AWS (3)"></figure><p>The orchestration layer adds the things a single job can&#39;t:</p>
+<ul>
+<li><strong>Pre‑flight setup as parallel branches</strong> — resetting databases, seeding fixtures, and preparing auth pools concurrently before any test runs, so every run starts from a known state.</li>
+<li><strong>Mixed parallel/sequential execution</strong> — exactly the two‑level model from the suite definitions, now enforced by the workflow engine.</li>
+<li><strong>Centralised results and alerting</strong> — every job uploads its archive to one bucket; failures fan out to email/SMS/chat from one place.</li>
+<li><strong>Scheduling</strong> — a scheduled trigger (cron‑style) kicks the whole workflow nightly with zero human involvement.</li>
+</ul>
+<hr>
+<h2>Why this is portable</h2>
+<p>Nothing here is fundamentally AWS‑shaped. The four blocks map onto any stack:</p>
+<pre><code>Concern              AWS here          GitHub Actions             GCP                       
+-------------------  ----------------  -------------------------  --------------------------
+Package              Docker + ECR      Docker + GHCR              Docker + Artifact Registry
+Execute              entrypoint.sh     entrypoint.sh (unchanged)  entrypoint.sh (unchanged) 
+Provision per‑suite  Batch on Fargate  matrix jobs / containers   Cloud Run Jobs            
+Orchestrate          Step Functions    workflow needs: graph      Workflows                 
+Secrets              Secrets Manager   Actions secrets            Secret Manager            
+Results/alerts       S3 + SNS          artifacts + notifications  GCS + Pub/Sub             </code></pre>
+<p>The two things that <em>don&#39;t</em> change across all of these are the <strong>container image</strong> and the <strong>entrypoint contract</strong>. That&#39;s the whole point: by pushing all cloud‑specific wiring into the provisioning and orchestration layers — and keeping the test runtime as a self‑contained, env‑driven image — you can lift the entire pipeline onto a different platform by rewriting only the outer two blocks.</p>
+<hr>
+<h2>Lessons learned</h2>
+<ul>
+<li><strong>One image, injected config.</strong> A credential‑free, environment‑agnostic image is what lets the same artifact run on a laptop and in production unchanged.</li>
+<li><strong>Make the entrypoint a contract.</strong> Validate required env vars, run generate‑then‑test, and <em>always</em> produce results and alerts — even on failure.</li>
+<li><strong>Let your suite‑as‑data drive the infrastructure.</strong> <code>for_each</code> over the suite map gives one right‑sized, isolated job per slice with zero duplication.</li>
+<li><strong>Isolate compute per suite.</strong> Serverless containers stop a heavy parallel batch and a delicate sequential flow from sharing — and starving — the same machine.</li>
+<li><strong>Orchestrate order, centralise results.</strong> A workflow engine enforces parallel/sequential structure; one bucket and one alert path keep observability simple.</li>
+<li><strong>Keep cloud logic in the outer layers.</strong> Push all platform specifics into provisioning and orchestration so the runtime stays portable.</li>
+</ul>
+<p>The result is a test pipeline that is reproducible, parallel, observable, and cloud‑portable — built from a handful of small, replaceable parts. Define a suite once as data; the image runs it, Terraform provisions it, and the orchestrator schedules it. Moving to a new cloud is a weekend, not a rewrite.</p>
+<hr>
+<p><em>Written from real‑world experience building a large, multi‑environment Playwright suite. All names, values, infrastructure identifiers, and examples are generic illustrations of the patterns described.</em></p>
+
+    <hr>
+    <p><em>Originally published at <a href="https://laxminarayanaboga.github.io/articles/cicd-aws-terraform-pipeline.html">https://laxminarayanaboga.github.io/articles/cicd-aws-terraform-pipeline.html</a></em></p>
+  </article>
+</body>
+</html>
