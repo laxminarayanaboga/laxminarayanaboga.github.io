@@ -78,7 +78,7 @@ npx playwright <span class="hljs-built_in">test</span> --project=chromium</code>
 <span class="hljs-keyword">export</span> <span class="hljs-keyword">default</span> <span class="hljs-title function_">defineConfig</span>({
   testDir, <span class="hljs-comment">// &lt;-- the generated specs, not your features</span>
   <span class="hljs-attr">fullyParallel</span>: <span class="hljs-literal">true</span>,
-  <span class="hljs-attr">workers</span>: process.<span class="hljs-property">env</span>.<span class="hljs-property">CI</span> ? <span class="hljs-number">3</span> : <span class="hljs-number">3</span>,
+  <span class="hljs-attr">workers</span>: process.<span class="hljs-property">env</span>.<span class="hljs-property">CI</span> ? <span class="hljs-number">4</span> : <span class="hljs-number">2</span>,
   <span class="hljs-attr">retries</span>: process.<span class="hljs-property">env</span>.<span class="hljs-property">CI</span> ? <span class="hljs-number">1</span> : <span class="hljs-number">0</span>,
   <span class="hljs-attr">reporter</span>: [
     [<span class="hljs-string">&quot;html&quot;</span>],

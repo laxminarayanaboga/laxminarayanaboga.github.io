@@ -58,7 +58,7 @@ const testDir = defineBddConfig({
 export default defineConfig({
   testDir, // <-- the generated specs, not your features
   fullyParallel: true,
-  workers: process.env.CI ? 3 : 3,
+  workers: process.env.CI ? 4 : 2,
   retries: process.env.CI ? 1 : 0,
   reporter: [
     ["html"],
