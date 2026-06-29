@@ -277,8 +277,10 @@ ${navScript}
 
 // Minimal, import-friendly page for Medium's "Import a story". No site chrome,
 // no CSS — just semantic HTML, real PNG images, and plain code blocks.
-function mediumPage({ title, bodyHtml, slug }) {
+function mediumPage({ title, bodyHtml, slug, num, total }) {
   const canonical = `${SITE.baseUrl}/articles/${slug}.html`;
+  const seriesUrl = `${SITE.baseUrl}/articles/index.html`;
+  const eyebrow = `    <p><strong><a href="${seriesUrl}">Testing at Scale</a></strong> · Part ${num} of ${total}</p>\n`;
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -289,7 +291,7 @@ function mediumPage({ title, bodyHtml, slug }) {
 </head>
 <body>
   <article>
-${bodyHtml}
+${eyebrow}${bodyHtml}
     <hr>
     <p><em>Originally published at <a href="${canonical}">${canonical}</a></em></p>
   </article>
@@ -410,7 +412,7 @@ async function main() {
     });
     fs.writeFileSync(
       path.join(mediumDir, `${a.slug}.html`),
-      mediumPage({ title: a.title, bodyHtml: mediumBody, slug: a.slug })
+      mediumPage({ title: a.title, bodyHtml: mediumBody, slug: a.slug, num: a.num, total })
     );
 
     console.log(`  ✓ ${a.slug}  (site + medium, ${diagrams.length} diagram${diagrams.length === 1 ? "" : "s"})`);
