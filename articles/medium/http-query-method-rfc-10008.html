@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="canonical" href="https://laxminarayanaboga.github.io/articles/http-query-method-rfc-10008.html">
+  <title>The HTTP QUERY Method — The First Genuinely New HTTP Verb in Sixteen Years</title>
+</head>
+<body>
+  <article>
+    <p><strong><a href="https://laxminarayanaboga.github.io/articles/software-foundations.html">Software Foundations</a></strong> · Part 1 of 1</p>
+<h1>The HTTP QUERY Method — The First Genuinely New HTTP Verb in Sixteen Years</h1>
+<blockquote>
+<p>HTTP almost never learns a new word. For nearly thirty years, <code>GET</code> has been the only honest way to <em>ask</em> the web a question — and it can&#39;t carry a body — so we lied, sending <code>POST</code> for searches and pretending they weren&#39;t mutations. In June 2026, <strong>RFC 10008</strong> ended that with <code>QUERY</code>: a request that carries a body yet stays <em>safe, idempotent, and cacheable</em>. Here&#39;s why it matters, and how it fits alongside the methods you already know.</p>
+</blockquote>
+<p>Here&#39;s the part that makes <code>QUERY</code> a story and not a footnote: <strong>the HTTP method set barely moves in a career.</strong> The vocabulary was frozen a generation ago.</p>
+<pre><code>Year      HTTP version / RFC   Methods introduced                  
+--------  -------------------  ------------------------------------
+1991      HTTP/0.9             GET                                 
+1996      HTTP/1.0 — RFC 1945  HEAD, POST                          
+1997      HTTP/1.1 — RFC 2068  PUT, DELETE, OPTIONS, TRACE, CONNECT
+2010      RFC 5789             PATCH                               
+**2026**  **RFC 10008**        **QUERY**                           </code></pre>
+<p>After HTTP/1.1 in 1997, the core set essentially stopped changing. The <em>only</em> broadly adopted general-purpose method added in the twenty-nine years since was <strong><code>PATCH</code> (2010)</strong>. (WebDAV bolted on <code>PROPFIND</code>, <code>MKCOL</code>, <code>COPY</code> and friends in between, but those are a niche extension — not verbs a typical REST API ever touches.) So however you count it, <code>QUERY</code> is a landmark:</p>
+<ul>
+<li>the <strong>first new general-purpose HTTP method in ~16 years</strong>, since <code>PATCH</code>; and</li>
+<li>the first new <strong>safe</strong> method — a new way to <em>read</em> — since HTTP/1.1 in <strong>1997</strong>.</li>
+</ul>
+<p><strong>So why now?</strong> Because the workaround finally got too expensive. The web became read-heavy and API-first: faceted search, GraphQL-style queries, analytics filters, policy and feature-flag lookups, and now semantic/vector search all send <em>large, structured read payloads</em>. Teams reached for the only verb that carries a body — <code>POST</code> — and paid for the lie: <code>POST</code> tells every cache, proxy, and retry layer <em>&quot;this changes state — don&#39;t cache me, don&#39;t repeat me,&quot;</em> so a read-only search loses edge caching, loses safe retries, and buries its filter — often full of account numbers and other sensitive fields — in a request the whole stack treats as a mutation. Two things finally made the fix practical: caches and CDNs matured to key on request bodies, and HTTP&#39;s semantics were cleanly re-specified in <strong>RFC 9110 (2022)</strong>, separating a method&#39;s <em>properties</em> (safe / idempotent / cacheable) from the method itself — leaving a neatly labelled slot for a safe, idempotent, cacheable verb that carries a body.</p>
+<p>Before we get to <code>QUERY</code> itself, a quick, honest tour of the methods it joins.</p>
+<hr>
+<h2>The standard HTTP methods, by their real properties</h2>
+<p>There are nine registered methods most teams touch. What matters for testing isn&#39;t the verb&#39;s name — it&#39;s three properties that govern how the whole network treats it:</p>
+<ul>
+<li><strong>Safe</strong> — the request is not <em>intended</em> to change server state. Safe requests can be pre-fetched, retried freely, and are assumed side-effect-free.</li>
+<li><strong>Idempotent</strong> — making the request N times has the same effect as making it once. This is what lets a client (or a proxy, or a mobile network) retry after a timeout without fear.</li>
+<li><strong>Cacheable</strong> — a response may be stored and reused for later equivalent requests.</li>
+</ul>
+<pre><code>Method   Safe  Idempotent  Cacheable  Request body  What it's for                                        
+-------  ----  ----------  ---------  ------------  -----------------------------------------------------
+GET      ✅     ✅           ✅          ✗ (ignored)   Retrieve a representation of a resource              
+HEAD     ✅     ✅           ✅          ✗             Like GET, headers only — existence, size, ETag checks
+POST     ✗     ✗           rarely     ✅             Process the payload; create, submit, &quot;do a thing&quot;    
+PUT      ✗     ✅           ✗          ✅             Replace the target resource with the payload         
+PATCH    ✗     ✗           ✗          ✅             Apply a partial modification                         
+DELETE   ✗     ✅           ✗          optional      Remove the target resource                           
+OPTIONS  ✅     ✅           ✗          optional      Ask what's allowed (CORS pre-flight lives here)      
+TRACE    ✅     ✅           ✗          ✗             Loop-back diagnostic; usually disabled for security  
+CONNECT  ✗     ✗           ✗          —             Establish a tunnel (HTTPS through a proxy)           </code></pre>
+<p>A few things worth internalising as a tester:</p>
+<ul>
+<li><strong><code>PATCH</code> is not idempotent</strong> by default. <code>PUT</code> replaces (send it twice, same result); <code>PATCH</code> applies a delta (<code>{&quot;balance&quot;: &quot;+100&quot;}</code> applied twice is a real bug). Test them differently.</li>
+<li><strong><code>DELETE</code> is idempotent, not safe.</strong> Deleting an already-deleted resource should still land you in a &quot;gone&quot; state — a second <code>DELETE</code> returning <code>404</code> instead of <code>204</code> is a classic idempotency smell.</li>
+<li><strong><code>OPTIONS</code> is where CORS pre-flight happens.</strong> If a browser client &quot;randomly&quot; fails, check whether the pre-flight <code>OPTIONS</code> was answered correctly before blaming the real call.</li>
+<li><strong><code>TRACE</code> should usually be off.</strong> If it&#39;s enabled, that&#39;s a finding, not a feature (Cross-Site Tracing).</li>
+</ul>
+<hr>
+<h2>The same methods, on one resource</h2>
+<p>Properties are abstract until you watch them on a real endpoint. Here&#39;s a <code>/users</code> collection walked through the verbs you&#39;ll actually test — pay attention to what happens on the <strong>second</strong> identical call:</p>
+<pre><code># READ — safe, cacheable, no body. Ask as often as you like; nothing changes.
+GET    /users/42        →  200  { &quot;id&quot;: 42, &quot;name&quot;: &quot;Ada&quot;, &quot;tier&quot;: &quot;gold&quot; }
+
+# CREATE — NOT idempotent. Send it twice, get two users.
+POST   /users           { &quot;name&quot;: &quot;Ada&quot; }   →  201  Location: /users/42
+POST   /users           { &quot;name&quot;: &quot;Ada&quot; }   →  201  Location: /users/43   ⚠ duplicate
+
+# REPLACE — idempotent. The resource becomes exactly this body, every time.
+PUT    /users/42        { &quot;name&quot;: &quot;Ada&quot;, &quot;tier&quot;: &quot;silver&quot; }  →  200
+PUT    /users/42        { &quot;name&quot;: &quot;Ada&quot;, &quot;tier&quot;: &quot;silver&quot; }  →  200   ✓ same end state
+
+# PARTIAL UPDATE — the verb can be idempotent, but the PAYLOAD decides.
+PATCH  /users/42        { &quot;tier&quot;: &quot;platinum&quot; }   →  200   ✓ absolute value, safe to repeat
+PATCH  /users/42        { &quot;loginCount&quot;: &quot;+1&quot; }   →  200   ⚠ relative op, NOT idempotent
+
+# DELETE — idempotent. Gone stays gone.
+DELETE /users/42        →  204
+DELETE /users/42        →  404 (or 204) — either way, 42 is still gone</code></pre>
+<p>The three write verbs are where teams get burned, and nearly every one of those bugs is an <strong>idempotency</strong> bug:</p>
+<ul>
+<li><strong><code>POST</code> is not idempotent — treat every retry as dangerous.</strong> A timeout on <code>POST /payments</code> doesn&#39;t tell you whether the charge landed. Retry blindly and you double-charge. The fix isn&#39;t &quot;never retry,&quot; it&#39;s an <strong>idempotency key</strong>: the client sends a unique key, the server records it, and a repeat with the same key returns the <em>original</em> result instead of acting again. Test that a retried <code>POST</code> with the same key creates <strong>one</strong> record, not two.</li>
+<li><strong><code>PUT</code> replaces, and must be idempotent — so prove it is.</strong> <code>PUT /users/42</code> should leave the resource in <em>exactly</em> the body you sent, whether you send it once or five times. A <code>PUT</code> that appends, increments, or silently preserves fields you omitted is a broken <code>PUT</code>. The classic bug: omitting <code>tier</code> and finding the old value still there.</li>
+<li><strong><code>PATCH</code> is only as idempotent as its payload.</strong> A patch of absolute values (<code>{&quot;tier&quot;:&quot;platinum&quot;}</code>) is safe to replay. A patch of <em>relative</em> operations (<code>{&quot;balance&quot;:&quot;+100&quot;}</code>, or JSON Patch <code>add</code>/<code>remove</code>) is not — replay it and the balance keeps climbing. This is the single most-missed distinction in API tests.</li>
+</ul>
+<p>The rule of thumb to encode: <strong><code>GET</code> <code>HEAD</code> <code>PUT</code> <code>DELETE</code> are safe to retry; <code>POST</code> and <code>PATCH</code> are not — assume nothing.</strong> When a proxy, mobile network, or retry layer repeats a request on your behalf, that line is the difference between a resilient system and a double-charged customer.</p>
+<p>Notice the top of the methods table: only <code>GET</code> and <code>HEAD</code> are safe, idempotent <em>and</em> cacheable — and neither can carry a body. That is the exact, decades-old gap <code>QUERY</code> closes.</p>
+<hr>
+<h2>Enter QUERY (RFC 10008, June 2026)</h2>
+<p><code>QUERY</code> is best understood in one line: <strong>it is <code>GET</code> with a request body, done honestly.</strong> The spec grants it the properties reads have always wanted together:</p>
+<ul>
+<li><strong>Safe</strong> — a server MUST NOT treat a <code>QUERY</code> as a request to change the target resource&#39;s state.</li>
+<li><strong>Idempotent</strong> — it can be retried or repeated without additional effect.</li>
+<li><strong>Cacheable</strong> — a cache MAY store the response and use it to satisfy later equivalent <code>QUERY</code> requests.</li>
+<li><strong>Carries a body</strong> — the query itself travels in the request content, with a <code>Content-Type</code>. Servers MUST reject the request if <code>Content-Type</code> is missing (<code>400</code>) or unsupported (<code>415</code>).</li>
+</ul>
+<figure><img src="https://laxminarayanaboga.github.io/articles/assets/diagrams/http-query-method-rfc-10008-1.png" alt="Diagram: The HTTP QUERY Method — The First Genuinely New HTTP Verb in Sixteen Years (1)"></figure><p>A request looks exactly like the <code>POST</code> you&#39;d write today — but the verb now tells the truth:</p>
+<pre><code>QUERY /v1/transactions HTTP/1.1
+Host: api.example-bank.com
+Content-Type: application/json
+Accept: application/json
+
+{
+  &quot;accountIds&quot;: [&quot;acc_1029&quot;, &quot;acc_3841&quot;, &quot;acc_7720&quot;],
+  &quot;dateRange&quot;: { &quot;from&quot;: &quot;2026-01-01&quot;, &quot;to&quot;: &quot;2026-06-30&quot; },
+  &quot;amount&quot;: { &quot;min&quot;: 500.00, &quot;currency&quot;: &quot;GBP&quot; },
+  &quot;categories&quot;: [&quot;card_payment&quot;, &quot;direct_debit&quot;],
+  &quot;risk&quot;: { &quot;flagged&quot;: true }
+}</code></pre>
+<p>Two response details are new and worth testing for:</p>
+<ul>
+<li><strong><code>Content-Location</code></strong> — a successful response MAY include a <code>Content-Location</code> header pointing at a URL that represents <em>these results</em>. Clients (and caches) can then <code>GET</code> that URL later without resending the body. It turns an expensive query into a shareable, cacheable resource.</li>
+<li><strong><code>Accept-Query</code></strong> — a server can advertise which query formats it understands via the <code>Accept-Query</code> response field, so clients can negotiate (<code>application/json</code>, <code>application/sql</code>, a custom filter grammar, etc.).</li>
+</ul>
+<p>And the one that will bite you if you skim the RFC: <strong>the cache key MUST incorporate the request body and its metadata.</strong> For <code>GET</code>, the cache key is essentially the URL. For <code>QUERY</code>, two requests to the same URL with <em>different bodies</em> are different queries — the cache has to key on the body too, or it will serve one customer&#39;s results to another.</p>
+<hr>
+<h2>Why fintech should care more than most</h2>
+<p>This isn&#39;t just tidier semantics. For a regulated, high-volume financial API, <code>QUERY</code> touches three things auditors and SREs care about.</p>
+<p><strong>1. Sensitive data leaves the URL.</strong> Account numbers, card BINs, customer identifiers, date-of-birth filters — anything you put in a <code>GET</code> query string is logged everywhere: load-balancer access logs, CDN logs, APM traces, the browser&#39;s history, and the <code>Referer</code> header sent to third parties. Moving the filter into a <code>QUERY</code> body keeps PII and PAN-adjacent data out of URLs by default. That&#39;s a direct, demonstrable control for <strong>PCI-DSS</strong> and <strong>GDPR</strong> data-minimisation reviews.</p>
+<p><strong>2. Honest idempotency means safe retries.</strong> Reconciliation jobs, statement generation, and reporting pipelines re-run constantly and retry on flaky networks. When a search is a <code>POST</code>, every retry layer has to <em>assume</em> it might be a write and either refuse to retry or build bespoke idempotency-key plumbing. <code>QUERY</code> is idempotent by contract — the mobile client, the service mesh, and the batch runner can all retry a timed-out search safely.</p>
+<p><strong>3. Expensive reads become cacheable again.</strong> &quot;Show me this account&#39;s last 90 days, filtered six ways&quot; is costly to compute and often repeated verbatim (pagination, refreshes, dashboards). Under <code>POST</code> you can&#39;t cache it at the edge without lying to your caches. <code>QUERY</code> lets a CDN or reverse proxy cache the response keyed on the body — provided that keying is correct, which is exactly the thing your tests must prove.</p>
+<hr>
+<h2>What it changes for API testing</h2>
+<p>Not much mechanically — and that&#39;s the point. <code>QUERY</code> is just a method string, so <code>fetch</code>, <code>curl</code>, Playwright&#39;s <code>request</code>, and k6 all send it today by setting the method:</p>
+<pre><code>await request.fetch(url, {
+  method: &quot;QUERY&quot;,
+  headers: { &quot;Content-Type&quot;: &quot;application/json&quot; },
+  data: filter,
+});</code></pre>
+<p>Only two assertions are genuinely new, and both are cheap:</p>
+<ul>
+<li><strong>Safety + idempotency</strong> — fire the same <code>QUERY</code> twice; assert server state is unchanged and both responses match. A <code>QUERY</code> that mutates is a bug <em>and</em> a security issue.</li>
+<li><strong>The cache keys on the body</strong> — send two <em>different</em> bodies to the same URL and assert they don&#39;t return each other&#39;s cached results. Get this wrong in fintech and the edge serves account A&#39;s data in response to account B&#39;s query. It&#39;s the one test I&#39;d never skip.</li>
+</ul>
+<p>Everything else is negative-path coverage you already write: missing/unsupported <code>Content-Type</code> → <code>400</code>/<code>415</code>, and — during the transition — old proxies and gateways answering <code>405</code>/<code>501</code>, which your client should feature-detect and fall back from to <code>POST</code>.</p>
+<hr>
+<h2>Lessons learned</h2>
+<ul>
+<li><strong>The verb is a contract with the whole network, not just the server.</strong> <code>GET</code>, <code>POST</code>, <code>PUT</code>, <code>PATCH</code>, <code>DELETE</code> each promise something to every cache and retry layer in the path. Most production bugs on the write verbs are really <em>idempotency</em> bugs — <code>POST</code> retried into a duplicate, a <code>PATCH</code> of relative values replayed one time too many.</li>
+<li><strong>A new HTTP method is a rare event — take it seriously.</strong> <code>QUERY</code> is the first new general-purpose verb since <code>PATCH</code> in 2010, and the first new <em>safe</em> one since 1997. The method set barely moves in a career; when it does, it&#39;s because a workaround finally became too costly to keep pretending about.</li>
+<li><strong><code>QUERY</code> is <code>GET</code> with a body, done honestly.</strong> Reach for it when you&#39;re <em>reading</em> with a filter too large or too sensitive for a URL — and stop paying the caching and idempotency tax that <code>POST</code>-for-search always charged.</li>
+<li><strong>In fintech, the headline win is data staying out of URLs</strong>, with idempotent retries and edge caching close behind. The one test to never skip: two different bodies to the same URL must never share a cached response.</li>
+</ul>
+<p><code>POST</code>-for-search was always a workaround we agreed to stop noticing. <code>QUERY</code> removes the excuse — the first time in most of our careers that HTTP has learned a new way to ask a question.</p>
+<hr>
+<p><em>Written from real-world experience testing financial APIs at scale. RFC 10008 (&quot;The HTTP QUERY Method&quot;) was published by the IETF in June 2026; all endpoints, hosts, and payloads here are generic illustrations.</em></p>
+
+    <hr>
+    <p><em>Originally published at <a href="https://laxminarayanaboga.github.io/articles/http-query-method-rfc-10008.html">https://laxminarayanaboga.github.io/articles/http-query-method-rfc-10008.html</a></em></p>
+  </article>
+</body>
+</html>

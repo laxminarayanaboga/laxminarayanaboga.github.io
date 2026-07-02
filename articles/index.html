@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="A series on testing at scale: Playwright-BDD architecture, fixtures, tag-driven execution, cloud CI/CD, and quality gates. By Laxminarayana Boga.">
+  <meta name="description" content="Technical writing by Laxminarayana Boga: series on testing at scale (Playwright-BDD, fixtures, CI/CD, quality gates) and software foundations (HTTP, APIs, protocols).">
   <meta property="og:title" content="Writing — Laxminarayana Boga">
-  <meta property="og:description" content="A series on testing at scale: Playwright-BDD architecture, fixtures, tag-driven execution, cloud CI/CD, and quality gates. By Laxminarayana Boga.">
+  <meta property="og:description" content="Technical writing by Laxminarayana Boga: series on testing at scale (Playwright-BDD, fixtures, CI/CD, quality gates) and software foundations (HTTP, APIs, protocols).">
   <meta property="og:type" content="article">
   
   <title>Writing — Laxminarayana Boga</title>
@@ -36,15 +36,14 @@
   <header class="writing-hero">
     <div class="section-container">
       <p class="section-title">Writing</p>
-      <h1 class="writing-title">Testing at Scale</h1>
+      <h1 class="writing-title">Writing</h1>
       <p class="writing-intro">
-        A practical series on building and running large test-automation suites — Playwright-BDD
-        architecture, fixtures as a runtime system, tag-driven execution, cloud-native CI/CD, and
-        quality gates beyond the functional. Drawn from real-world experience; all examples are
-        generic illustrations of the patterns.
+        Ongoing series drawn from real-world experience — hard-won lessons on running large test
+        suites, and foundational explainers on how software systems talk to each other. Pick a
+        series to start reading.
       </p>
       <p class="writing-intro">
-        Each article is also published on
+        Articles are also published on
         <a href="https://medium.com/@laxminarayanaboga4079" target="_blank" rel="noopener">Medium</a>.
       </p>
     </div>
@@ -53,102 +52,21 @@
     <div class="section-container">
       <div class="article-cards">
 
-        <a class="article-card" href="scaling-playwright-bdd.html">
-          <span class="article-card-num">01</span>
-          <span class="article-card-body">
-            <span class="article-card-title">Scaling Playwright‑BDD to 3,000+ Tests Without Losing Your Mind</span>
-            <span class="article-card-blurb">How we structured fixtures, steps, and tags to keep a large Behaviour‑Driven test suite fast, readable, and maintainable.</span>
-            <span class="article-card-cta">Read article →</span>
-          </span>
-        </a>
-
-        <a class="article-card" href="scalable-test-data-management.html">
-          <span class="article-card-num">02</span>
-          <span class="article-card-body">
-            <span class="article-card-title">Highly Scalable Test Data Management in Playwright</span>
-            <span class="article-card-blurb">How we tie thousands of test users and hundreds of journey datasets to the right test — automatically — using fixtures, not glue code.</span>
-            <span class="article-card-cta">Read article →</span>
-          </span>
-        </a>
-
-        <a class="article-card" href="fixtures-as-a-runtime-system.html">
-          <span class="article-card-num">03</span>
-          <span class="article-card-body">
-            <span class="article-card-title">Playwright Fixtures as a Runtime System: Five Patterns Beyond `page`</span>
-            <span class="article-card-blurb">Scopes, teardown‑only guards, cached sessions, and self‑built browser contexts — the fixture mechanics that quietly run a 3,000‑test suite.</span>
-            <span class="article-card-cta">Read article →</span>
-          </span>
-        </a>
-
-        <a class="article-card" href="tag-driven-test-execution.html">
-          <span class="article-card-num">04</span>
-          <span class="article-card-body">
-            <span class="article-card-title">Tag‑Driven Test Execution: Turning 3,000 Playwright Tests Into a Schedulable Pipeline</span>
-            <span class="article-card-blurb">How a small tag vocabulary and a &quot;suite‑as‑data&quot; model let us slice thousands of tests into precisely‑tuned, parallelisable batches.</span>
-            <span class="article-card-cta">Read article →</span>
-          </span>
-        </a>
-
-        <a class="article-card" href="cicd-aws-terraform-pipeline.html">
-          <span class="article-card-num">05</span>
-          <span class="article-card-body">
-            <span class="article-card-title">Running Playwright in the Cloud: A Reusable CI/CD Pipeline with Docker, Terraform &amp; AWS</span>
-            <span class="article-card-blurb">One container image, one suite‑as‑data definition, and an infrastructure‑as‑code pipeline that fans thousands of tests across the cloud — portable to GitHub Actions, GCP, or anywhere else.</span>
-            <span class="article-card-cta">Read article →</span>
-          </span>
-        </a>
-
-        <a class="article-card" href="time-travel-testing.html">
-          <span class="article-card-num">06</span>
-          <span class="article-card-body">
-            <span class="article-card-title">Time‑Travel Testing in Playwright: Automating Date‑Sensitive Flows</span>
-            <span class="article-card-blurb">Some bugs only appear on the last day of the month, on a leap year, or 30 days after sign‑up. Here's how to make those moments reproducible by controlling the clock — and how to put time back when the test ends.</span>
-            <span class="article-card-cta">Read article →</span>
-          </span>
-        </a>
-
-        <a class="article-card" href="database-side-effect-assertions.html">
-          <span class="article-card-num">07</span>
-          <span class="article-card-body">
-            <span class="article-card-title">Don't Just Test the Screen: Verifying Database &amp; Message Side Effects in Playwright</span>
-            <span class="article-card-blurb">A green UI assertion can hide a broken backend. Here's how to drive the front end with Playwright and then assert on the database and message store to prove the *system* actually did the right thing.</span>
-            <span class="article-card-cta">Read article →</span>
-          </span>
-        </a>
-
-        <a class="article-card" href="network-interception-contract-validation.html">
-          <span class="article-card-num">08</span>
-          <span class="article-card-body">
-            <span class="article-card-title">Beyond Mocking: Capturing Real Network Traffic and Validating Response Contracts</span>
-            <span class="article-card-blurb">Most teams use request interception to *fake* responses. The more powerful use is the opposite — let the real traffic flow, capture it, and assert that the page actually called the right APIs and got the right answers.</span>
-            <span class="article-card-cta">Read article →</span>
-          </span>
-        </a>
-
-        <a class="article-card" href="accessibility-testing-at-scale.html">
-          <span class="article-card-num">09</span>
-          <span class="article-card-body">
-            <span class="article-card-title">Accessibility Testing at Scale: From One‑Off axe Script to a Tagged, Gated, Reported Suite</span>
-            <span class="article-card-blurb">A single `axe-core` script in a corner of the repo is easy to ignore. Wiring accessibility checks into the *same* tag‑driven, fixture‑backed, reported pipeline as your functional tests is what makes them actually stick.</span>
-            <span class="article-card-cta">Read article →</span>
-          </span>
-        </a>
-
-        <a class="article-card" href="lighthouse-k6-quality-gates.html">
-          <span class="article-card-num">10</span>
-          <span class="article-card-body">
-            <span class="article-card-title">Quality Gates Beyond Functional: Lighthouse and K6 in One Tag‑Driven Pipeline</span>
-            <span class="article-card-blurb">Functional tests tell you the feature works. They say nothing about whether the page is *fast enough* or the API *holds up under load*. Here's how performance and budget checks become first‑class, tagged, gated members of the same suite — not separate tools nobody runs.</span>
-            <span class="article-card-cta">Read article →</span>
-          </span>
-        </a>
-
-        <a class="article-card" href="white-label-multi-tenant-testing.html">
+        <a class="article-card" href="testing-at-scale.html">
           <span class="article-card-num">11</span>
           <span class="article-card-body">
-            <span class="article-card-title">One Suite, Many Brands: A White‑Label / Multi‑Tenant Testing Strategy</span>
-            <span class="article-card-blurb">When the same product ships under several brands, the naive answers are &quot;copy the suite per brand&quot; or &quot;test only one and hope.&quot; Both are wrong. Here's how a single suite covers many tenants through shared journeys, a layered data‑resolution fallback, and per‑tenant overrides.</span>
-            <span class="article-card-cta">Read article →</span>
+            <span class="article-card-title">Testing at Scale</span>
+            <span class="article-card-blurb">A practical series on building and running large test-automation suites — Playwright-BDD architecture, fixtures as a runtime system, tag-driven execution, cloud-native CI/CD, and quality gates beyond the functional. Drawn from real-world experience; all examples are generic illustrations of the patterns.</span>
+            <span class="article-card-cta">View series →</span>
+          </span>
+        </a>
+
+        <a class="article-card" href="software-foundations.html">
+          <span class="article-card-num">1</span>
+          <span class="article-card-body">
+            <span class="article-card-title">Software Foundations</span>
+            <span class="article-card-blurb">Foundational explainers on how software systems actually talk to each other — HTTP methods and status codes, REST, WebSockets, web services and GraphQL, and the protocols underneath. Written for engineers who test and build APIs, with a bias toward what matters in production.</span>
+            <span class="article-card-cta">View series →</span>
           </span>
         </a>
       </div>

@@ -33,15 +33,46 @@ const SITE = {
   baseUrl: "https://laxminarayanaboga.github.io",
 };
 
+// Article series. Every source file belongs to exactly one series, matched by
+// its filename prefix (`<prefix>-<N>-<slug>.md`). Files are ordered within a
+// series by <N>. Each series renders its own section on the Writing index and
+// carries its own eyebrow / prev-next navigation. To start a NEW series: add an
+// entry here and name its files with that prefix — nothing else needs changing.
+const SERIES = [
+  {
+    id: "testing-at-scale",
+    prefix: "article",
+    title: "Testing at Scale",
+    intro:
+      "A practical series on building and running large test-automation suites — Playwright-BDD " +
+      "architecture, fixtures as a runtime system, tag-driven execution, cloud-native CI/CD, and " +
+      "quality gates beyond the functional. Drawn from real-world experience; all examples are " +
+      "generic illustrations of the patterns.",
+  },
+  {
+    id: "software-foundations",
+    prefix: "foundations",
+    title: "Software Foundations",
+    intro:
+      "Foundational explainers on how software systems actually talk to each other — HTTP methods " +
+      "and status codes, REST, WebSockets, web services and GraphQL, and the protocols underneath. " +
+      "Written for engineers who test and build APIs, with a bias toward what matters in production.",
+  },
+];
+
 // ----- helpers ---------------------------------------------------------------
 
 const escapeHtml = (s) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 const slugOf = (filename) =>
-  filename.replace(/^article-\d+-/, "").replace(/\.md$/, "");
+  filename.replace(/^[a-z]+-\d+-/, "").replace(/\.md$/, "");
 
-const numOf = (filename) => parseInt(filename.match(/^article-(\d+)-/)?.[1] ?? "0", 10);
+const numOf = (filename) => parseInt(filename.match(/^[a-z]+-(\d+)-/)?.[1] ?? "0", 10);
+
+// The series a source file belongs to, or undefined if it matches none.
+const seriesOf = (filename) =>
+  SERIES.find((s) => new RegExp(`^${s.prefix}-\\d+-.*\\.md$`).test(filename));
 
 // Medium has no table support, so for the Medium export we rewrite GFM pipe
 // tables into an aligned monospaced text table inside a fenced code block,
@@ -226,7 +257,7 @@ const head = ({ title, description, prefix, canonical }) => `<!DOCTYPE html>
 </head>
 <body>`;
 
-function articlePage({ title, description, bodyHtml, num, total, prevA, nextA }) {
+function articlePage({ title, description, bodyHtml, series, pos, total, prevA, nextA }) {
   const prefix = "../";
   const mediumBanner = `
     <div class="medium-banner">
@@ -234,10 +265,14 @@ function articlePage({ title, description, bodyHtml, num, total, prevA, nextA })
       <a href="${SITE.medium}" target="_blank" rel="noopener" class="medium-link">Read it on Medium →</a>
     </div>`;
 
+  const eyebrow = `<p class="article-eyebrow"><a href="${series.id}.html">${escapeHtml(
+    series.title
+  )}</a> · Part ${pos} of ${total}</p>`;
+
   const seriesNav = `
     <nav class="series-nav" aria-label="Series navigation">
       ${prevA ? `<a class="series-prev" href="${prevA.slug}.html">← ${escapeHtml(prevA.title)}</a>` : `<span></span>`}
-      <a class="series-all" href="index.html">All articles</a>
+      <a class="series-all" href="${series.id}.html">All articles</a>
       ${nextA ? `<a class="series-next" href="${nextA.slug}.html">${escapeHtml(nextA.title)} →</a>` : `<span></span>`}
     </nav>`;
 
@@ -259,7 +294,7 @@ function articlePage({ title, description, bodyHtml, num, total, prevA, nextA })
 ${navHtml(prefix)}
   <main class="article">
     <div class="article-container">
-      <p class="article-eyebrow"><a href="index.html">Testing at Scale</a> · Part ${num} of ${total}</p>
+      ${eyebrow}
       ${mediumBanner}
       <article class="article-content">
         ${bodyHtml}
@@ -277,10 +312,12 @@ ${navScript}
 
 // Minimal, import-friendly page for Medium's "Import a story". No site chrome,
 // no CSS — just semantic HTML, real PNG images, and plain code blocks.
-function mediumPage({ title, bodyHtml, slug, num, total }) {
+function mediumPage({ title, bodyHtml, slug, series, pos, total }) {
   const canonical = `${SITE.baseUrl}/articles/${slug}.html`;
-  const seriesUrl = `${SITE.baseUrl}/articles/index.html`;
-  const eyebrow = `    <p><strong><a href="${seriesUrl}">Testing at Scale</a></strong> · Part ${num} of ${total}</p>\n`;
+  const seriesUrl = `${SITE.baseUrl}/articles/${series.id}.html`;
+  const eyebrow = `    <p><strong><a href="${seriesUrl}">${escapeHtml(
+    series.title
+  )}</a></strong> · Part ${pos} of ${total}</p>\n`;
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -300,13 +337,70 @@ ${eyebrow}${bodyHtml}
 `;
 }
 
-function indexPage(articles) {
+// The Writing index is a compact landing: one card per series, linking to that
+// series' own page. `groups` is [{ series, articles }] in SERIES order.
+function indexPage(groups) {
+  const prefix = "../";
+
+  const cards = groups
+    .map(
+      ({ series, articles }) => `
+        <a class="article-card" href="${series.id}.html">
+          <span class="article-card-num">${articles.length}</span>
+          <span class="article-card-body">
+            <span class="article-card-title">${escapeHtml(series.title)}</span>
+            <span class="article-card-blurb">${escapeHtml(series.intro)}</span>
+            <span class="article-card-cta">View series →</span>
+          </span>
+        </a>`
+    )
+    .join("\n");
+
+  return `${head({
+    title: `Writing — ${SITE.author}`,
+    description:
+      "Technical writing by Laxminarayana Boga: series on testing at scale (Playwright-BDD, fixtures, CI/CD, quality gates) and software foundations (HTTP, APIs, protocols).",
+    prefix,
+  })}
+${navHtml(prefix)}
+  <header class="writing-hero">
+    <div class="section-container">
+      <p class="section-title">Writing</p>
+      <h1 class="writing-title">Writing</h1>
+      <p class="writing-intro">
+        Ongoing series drawn from real-world experience — hard-won lessons on running large test
+        suites, and foundational explainers on how software systems talk to each other. Pick a
+        series to start reading.
+      </p>
+      <p class="writing-intro">
+        Articles are also published on
+        <a href="${SITE.medium}" target="_blank" rel="noopener">Medium</a>.
+      </p>
+    </div>
+  </header>
+  <main class="writing-list">
+    <div class="section-container">
+      <div class="article-cards">
+${cards}
+      </div>
+    </div>
+  </main>
+${footerHtml}
+${navScript}
+</body>
+</html>
+`;
+}
+
+// One page per series: its own hero + the list of article cards. Lives at
+// `<series-id>.html` so article eyebrows and the index link here.
+function seriesPage(series, articles) {
   const prefix = "../";
   const cards = articles
     .map(
-      (a) => `
+      (a, i) => `
         <a class="article-card" href="${a.slug}.html">
-          <span class="article-card-num">${String(a.num).padStart(2, "0")}</span>
+          <span class="article-card-num">${String(i + 1).padStart(2, "0")}</span>
           <span class="article-card-body">
             <span class="article-card-title">${escapeHtml(a.title)}</span>
             <span class="article-card-blurb">${escapeHtml(a.blurb)}</span>
@@ -317,22 +411,16 @@ function indexPage(articles) {
     .join("\n");
 
   return `${head({
-    title: `Writing — ${SITE.author}`,
-    description:
-      "A series on testing at scale: Playwright-BDD architecture, fixtures, tag-driven execution, cloud CI/CD, and quality gates. By Laxminarayana Boga.",
+    title: `${series.title} — ${SITE.author}`,
+    description: series.intro,
     prefix,
   })}
 ${navHtml(prefix)}
   <header class="writing-hero">
     <div class="section-container">
-      <p class="section-title">Writing</p>
-      <h1 class="writing-title">Testing at Scale</h1>
-      <p class="writing-intro">
-        A practical series on building and running large test-automation suites — Playwright-BDD
-        architecture, fixtures as a runtime system, tag-driven execution, cloud-native CI/CD, and
-        quality gates beyond the functional. Drawn from real-world experience; all examples are
-        generic illustrations of the patterns.
-      </p>
+      <p class="section-title"><a href="index.html">← Writing</a></p>
+      <h1 class="writing-title">${escapeHtml(series.title)}</h1>
+      <p class="writing-intro">${escapeHtml(series.intro)}</p>
       <p class="writing-intro">
         Each article is also published on
         <a href="${SITE.medium}" target="_blank" rel="noopener">Medium</a>.
@@ -358,25 +446,35 @@ ${navScript}
 async function main() {
   const files = fs
     .readdirSync(ARTICLES_DIR)
-    .filter((f) => /^article-\d+-.*\.md$/.test(f))
+    .filter((f) => seriesOf(f))
     .sort((a, b) => numOf(a) - numOf(b));
 
   fs.mkdirSync(ASSETS_DIR, { recursive: true });
 
-  // first pass: metadata
+  // first pass: metadata (each article tagged with its series)
   const articles = files.map((file) => {
     const md = fs.readFileSync(path.join(ARTICLES_DIR, file), "utf8");
     const title = md.match(/^#\s+(.+)$/m)?.[1].trim() ?? slugOf(file);
     const blurb = (md.match(/^>\s+(.+)$/m)?.[1] ?? "").trim();
-    return { file, slug: slugOf(file), num: numOf(file), title, blurb, md };
+    return { file, slug: slugOf(file), num: numOf(file), title, blurb, md, series: seriesOf(file) };
   });
 
-  const total = articles.length;
+  // group by series (in SERIES order), sorted within each series by number.
+  const groups = SERIES.map((series) => ({
+    series,
+    articles: articles.filter((a) => a.series.id === series.id).sort((x, y) => x.num - y.num),
+  })).filter((g) => g.articles.length > 0);
+
   const mediumDir = path.join(ARTICLES_DIR, "medium");
   fs.mkdirSync(mediumDir, { recursive: true });
 
-  for (let i = 0; i < articles.length; i++) {
-    const a = articles[i];
+  for (const { series, articles: seriesArticles } of groups) {
+    const total = seriesArticles.length;
+    for (let i = 0; i < seriesArticles.length; i++) {
+      const a = seriesArticles[i];
+      const pos = i + 1;
+      const prevA = seriesArticles[i - 1];
+      const nextA = seriesArticles[i + 1];
 
     // --- site page: mermaid -> inline SVG ---
     const diagrams = [];
@@ -392,10 +490,11 @@ async function main() {
       title: a.title,
       description: a.blurb || `${a.title} — by ${SITE.author}`,
       bodyHtml,
-      num: a.num,
+      series,
+      pos,
       total,
-      prevA: articles[i - 1],
-      nextA: articles[i + 1],
+      prevA,
+      nextA,
     });
     fs.writeFileSync(path.join(ARTICLES_DIR, `${a.slug}.html`), html);
 
@@ -412,14 +511,18 @@ async function main() {
     });
     fs.writeFileSync(
       path.join(mediumDir, `${a.slug}.html`),
-      mediumPage({ title: a.title, bodyHtml: mediumBody, slug: a.slug, num: a.num, total })
+      mediumPage({ title: a.title, bodyHtml: mediumBody, slug: a.slug, series, pos, total })
     );
 
-    console.log(`  ✓ ${a.slug}  (site + medium, ${diagrams.length} diagram${diagrams.length === 1 ? "" : "s"})`);
+      console.log(`  ✓ ${a.slug}  (${series.id} · site + medium, ${diagrams.length} diagram${diagrams.length === 1 ? "" : "s"})`);
+    }
+
+    fs.writeFileSync(path.join(ARTICLES_DIR, `${series.id}.html`), seriesPage(series, seriesArticles));
+    console.log(`  ✓ ${series.id}.html  (series page, ${total} article${total === 1 ? "" : "s"})`);
   }
 
-  fs.writeFileSync(path.join(ARTICLES_DIR, "index.html"), indexPage(articles));
-  console.log(`  ✓ index.html  (index of ${total})`);
+  fs.writeFileSync(path.join(ARTICLES_DIR, "index.html"), indexPage(groups));
+  console.log(`  ✓ index.html  (${groups.length} series, ${articles.length} articles)`);
   console.log("\nMedium import URLs:");
   articles.forEach((a) => console.log(`  ${SITE.baseUrl}/articles/medium/${a.slug}.html`));
   console.log("Done.");
