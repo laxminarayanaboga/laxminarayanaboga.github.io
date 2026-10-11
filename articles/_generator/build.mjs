@@ -58,6 +58,15 @@ const SERIES = [
       "and status codes, REST, WebSockets, web services and GraphQL, and the protocols underneath. " +
       "Written for engineers who test and build APIs, with a bias toward what matters in production.",
   },
+  {
+    id: "ai-experiments",
+    prefix: "ai",
+    title: "AI Experiments",
+    intro:
+      "Hands-on experiments with new AI models, built with Playwright and TypeScript and measured " +
+      "honestly against plain-code baselines — what the model is actually good at, where it breaks, " +
+      "and what it costs.",
+  },
 ];
 
 // ----- helpers ---------------------------------------------------------------

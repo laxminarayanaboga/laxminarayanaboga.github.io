@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="canonical" href="https://laxminarayanaboga.github.io/articles/latency-is-a-design-constraint-chrome-dino.html">
+  <title>Latency Is a Design Constraint: A Decision Model Plays the Chrome Dino Game</title>
+</head>
+<body>
+  <article>
+    <p><strong><a href="https://laxminarayanaboga.github.io/articles/ai-experiments.html">AI Experiments</a></strong> · Part 2 of 2</p>
+<h1>Latency Is a Design Constraint: A Decision Model Plays the Chrome Dino Game</h1>
+<blockquote>
+<p>After 2048, I gave the same AI decision model a game where timing is everything: the dinosaur that runs across Chrome when you&#39;re offline. The first design asked it &quot;jump now?&quot; — and the dino died on the second cactus every time, even though the model&#39;s answers were 100% correct. The fix wasn&#39;t a better prompt. It was asking a different question at a different moment, and letting code own the clock.</p>
+</blockquote>
+<p>In the <a href="decision-model-plays-2048.html">previous article</a> I made TypeSafe&#39;s Jev play 2048, a turn-based game where a 230 ms answer is instant. The dino game is the opposite: a reflex game where obstacles arrive every second or so, at up to 780 pixels per second. If the 2048 experiment was about <em>what</em> to tell the model, this one is about <em>when</em>.</p>
+<hr>
+<h2>Getting into chrome://dino</h2>
+<p>The plan said: open <code>chrome://dino</code> in Playwright, find the game&#39;s state object (historically <code>Runner</code>), and read obstacles and speed from it. Two things on the live page disagreed with every blog post I&#39;d seen.</p>
+<p><strong>The navigation &quot;fails&quot; but the game loads.</strong> <code>page.goto(&quot;chrome://dino&quot;)</code> rejects with <code>ERR_INTERNET_DISCONNECTED</code> — because the dino <em>is</em> the offline error page — and the page lands on <code>chrome-error://chromewebdata/</code> with the game ready. Catch and carry on.</p>
+<p><strong>There&#39;s no <code>window.Runner</code> any more.</strong> In current Chromium the game is an ES module; only a few constant tables are global. But the game still registers <em>itself</em> as an event listener object (<code>addEventListener(&quot;keydown&quot;, this)</code>), so an init script that wraps <code>addEventListener</code> catches the instance as it&#39;s created:</p>
+<pre><code>await page.addInitScript(`(() =&gt; {
+  const orig = EventTarget.prototype.addEventListener;
+  EventTarget.prototype.addEventListener = function (type, l, o) {
+    if (l &amp;&amp; typeof l === &quot;object&quot; &amp;&amp; l.handleEvent &amp;&amp; &quot;tRex&quot; in l &amp;&amp; !window.__runner) window.__runner = l;
+    return orig.call(this, type, l, o);
+  };
+})()`);</code></pre>
+<p>From there everything is readable: <code>currentSpeed</code>, <code>crashed</code>, the dino&#39;s position and whether it&#39;s jumping or ducking, and every obstacle&#39;s type, position, width and speed offset. (One TypeScript gotcha on the way: <code>tsx</code> injects a <code>__name</code> helper into named functions, which doesn&#39;t exist inside the page, so in-page code goes in as strings.)</p>
+<hr>
+<h2>The baseline: three lines of <code>if</code></h2>
+<p>As with 2048, the model gets a plain-code opponent. Code works out how many milliseconds until the next obstacle reaches the dino, and:</p>
+<pre><code>if (kind === &quot;high bird&quot;) return &quot;wait&quot;;                  // run under it
+if (kind === &quot;mid bird&quot;) return arrivalMs &lt;= 150 ? &quot;duck&quot; : &quot;wait&quot;;
+return arrivalMs &lt;= 150 ? &quot;jump&quot; : &quot;wait&quot;;                // cacti and low birds</code></pre>
+<p>That&#39;s the whole bot. It&#39;s frighteningly good: once the game reaches its top speed, nothing changes, so the same 150 ms rule just keeps working. One run went past <strong>97,000 points in 83 minutes</strong> and was still going when I wrote this.</p>
+<hr>
+<h2>Design one: let the model decide <em>now</em></h2>
+<p>The plan for the model was the obvious one. Code computes the time until the obstacle arrives, subtracts the model&#39;s expected latency, and turns the result into a word — <code>far</code>, <code>approaching</code>, <code>in the window</code>, <code>past the window</code>. The model sees the obstacle and that word, and picks jump, duck or wait. Because one request at a time (~230 ms each) is too coarse for a jump window, code fires a fresh request every 40 ms while an obstacle is close, and acts on the newest answer.</p>
+<p>It crashed at a score of <strong>102</strong>. After tuning, <strong>51</strong>.</p>
+<p>The logs were unambiguous, and not about the model. Of 118 answers in the first run, <strong>every single one was right</strong> for the words it was given: far → wait, approaching → wait, in the window → jump, past it → jump, with probabilities of 0.93 to 1.0. The model did its job perfectly.</p>
+<p>What failed was the arithmetic around it:</p>
+<pre><code>                                              
+--------------------------------  ------------
+Model latency, request to answer  192 – 316 ms
+Width of a safe jump window       about 90 ms </code></pre>
+<p>To say &quot;in the window&quot;, code has to predict when the answer will <em>land</em>. When the guess is 100 ms off — and with a 120 ms spread it often is — the dino jumps 100 ms early and comes down on the cactus. In one crash, a request went out while the latency estimate was ~310 ms, the answer came back in 218 ms, and the dino jumped at 289 ms instead of 150. You can&#39;t tune your way out of that: <strong>the jitter alone is wider than the window.</strong></p>
+<hr>
+<h2>Design two: decide <em>what</em> early, let code decide <em>when</em></h2>
+<p>So I changed the question, not the wording. As soon as an obstacle appears on screen — typically 600–800 ms before it arrives — code asks once:</p>
+<pre><code>choice(&quot;The dino is running towards `obstacle`. What should it do when the obstacle reaches it?&quot;, {
+  jump: &quot;`obstacle` is on the ground or flying low at the dino's feet, so jumping over it clears it.&quot;,
+  duck: &quot;`obstacle` is flying at the height of the dino's head, so ducking under it avoids it.&quot;,
+  wait: &quot;`obstacle` is flying above the dino's head, so the dino keeps running under it.&quot;,
+});</code></pre>
+<p>The state is a single phrase, like <code>&quot;mid-height bird, flying at the dino&#39;s head&quot;</code>. Code stores the answer against that obstacle and carries it out at exactly 150 ms — the same moment the <code>if</code> bot uses. Latency stops mattering as long as the answer arrives before the obstacle does, and it had about half a second of slack.</p>
+<p>Getting it right took three code fixes, none of them about the model: a jump blocked while the dino was still in the air was never retried; ducking was tied to code&#39;s own bird classification instead of the model&#39;s answer; and matching obstacles between reads by their estimated arrival time once lost track of a cactus, which then looked &quot;new&quot; and got asked about too late. The last one was fixed by stamping a stable id on each obstacle object inside the page.</p>
+<p>Then it ran properly:</p>
+<pre><code>Run  Score       Result                                                              
+---  ----------  --------------------------------------------------------------------
+1    4,336       crashed — see below                                                 
+2    **29,787**  still alive after 26 minutes, stopped by my 2,000-request safety cap</code></pre>
+<p>Across those 2,000 requests the model classified <strong>1,998 of 1,998 obstacles correctly</strong> — 664 small cacti, 675 large cacti, 226 low birds, 209 mid birds and 225 high birds — at about one request per second, for <strong>$0.035</strong> in total.</p>
+<hr>
+<h2>The run that died: the latency tail</h2>
+<p>Run 1 crashed on a small cactus that the model never got to decide about. The request went out 735 ms ahead, and no answer had arrived by the time the dino had to jump.</p>
+<pre><code>Latency                 
+----------------  ------
+median            242 ms
+p95               361 ms
+p99               474 ms
+slowest answered  605 ms</code></pre>
+<p>One request in two thousand was too slow, and that was enough to end a run that was going well. This is the part that matters for anything real-time: averages describe the experience, but <strong>the tail decides whether it works.</strong> The standard fixes — hedging (send two identical requests and take the first answer) or a fallback when no answer has arrived — are cheap here; at these prices, doubling every request costs about seven cents per 25 minutes.</p>
+<hr>
+<h2>Is the model actually doing anything?</h2>
+<p>Honestly: not much more than a lookup. Once code has turned the obstacle into &quot;mid-height bird, flying at the dino&#39;s head&quot;, choosing <em>duck</em> is not a hard judgment, and the model matched the <code>if</code> bot&#39;s decisions exactly rather than beating them. That&#39;s what I expected going in, and the experiment was never really about the dino. It was about where a ~230 ms, slightly jittery judgment can sit in a real-time loop — and the answer is: <strong>ahead of the moment, not at it.</strong></p>
+<hr>
+<h2>Lessons learned</h2>
+<ul>
+<li><strong>Don&#39;t put a jittery call on the critical path of a tight deadline.</strong> If the spread of your latency is wider than your window, no tuning will save you.</li>
+<li><strong>Split &quot;what&quot; from &quot;when&quot;.</strong> Ask the model early about what to do; let deterministic code execute it at the right moment. Latency then only has to beat a generous deadline, not hit a narrow one.</li>
+<li><strong>Plan for the tail, not the median.</strong> p99 and the occasional outlier decide whether a real-time system survives. Hedge, or fall back.</li>
+<li><strong>When it fails, check the logs before the prompt.</strong> Every crash in this project was in my code — timing, retries, object tracking — while the model&#39;s answers were right every time.</li>
+<li><strong>Inspect the live page.</strong> <code>chrome://dino</code> no longer exposes <code>Runner</code>; trusting older write-ups would have stalled the whole thing.</li>
+<li><strong>A three-line baseline can be unbeatable.</strong> Measure against it anyway; it tells you what the model is (and isn&#39;t) adding.</li>
+</ul>
+<p>All the code, run logs and numbers are in <a href="https://github.com/laxminarayanaboga/jev-playground">github.com/laxminarayanaboga/jev-playground</a>.</p>
+<hr>
+<p><em>A hands-on learning experiment with TypeSafe&#39;s Jev 1.13, built with Playwright and TypeScript, pair-programmed with Claude Code. Scores and latencies are from a handful of runs on one machine; your results will vary.</em></p>
+
+    <hr>
+    <p><em>Originally published at <a href="https://laxminarayanaboga.github.io/articles/latency-is-a-design-constraint-chrome-dino.html">https://laxminarayanaboga.github.io/articles/latency-is-a-design-constraint-chrome-dino.html</a></em></p>
+  </article>
+</body>
+</html>

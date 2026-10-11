@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Jev, from TypeSafe AI, is a new kind of model: it never writes text, it only makes judgments. You give it a small state and a typed question, and about 230 ms later it hands back an answer with probabilities. I wanted to know what that is actually good for, so I made it play 2048 in a real browser and measured it against plain-code bots. The surprise wasn't how smart it was. It was how completely its play depended on the facts I chose to give it.">
+  <meta property="og:title" content="Teaching a Decision Model to Play 2048 — and Why the Facts Mattered More Than the Model — Laxminarayana Boga">
+  <meta property="og:description" content="Jev, from TypeSafe AI, is a new kind of model: it never writes text, it only makes judgments. You give it a small state and a typed question, and about 230 ms later it hands back an answer with probabilities. I wanted to know what that is actually good for, so I made it play 2048 in a real browser and measured it against plain-code bots. The surprise wasn't how smart it was. It was how completely its play depended on the facts I chose to give it.">
+  <meta property="og:type" content="article">
+  
+  <title>Teaching a Decision Model to Play 2048 — and Why the Facts Mattered More Than the Model — Laxminarayana Boga</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://kit.fontawesome.com/e8e3708268.js" crossorigin="anonymous"></script>
+  <link rel="stylesheet" href="../style.css">
+  <link rel="stylesheet" href="../articles/assets/article.css">
+</head>
+<body>
+
+  <nav class="nav" id="nav">
+    <div class="nav-container">
+      <a href="../index.html" class="nav-logo">LB</a>
+      <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation">
+        <span></span><span></span><span></span>
+      </button>
+      <ul class="nav-links" id="navLinks">
+        <li><a href="../index.html#about">About</a></li>
+        <li><a href="../index.html#experience">Experience</a></li>
+        <li><a href="../index.html#projects">Projects</a></li>
+        <li><a href="index.html">Writing</a></li>
+        <li><a href="../index.html#contact">Contact</a></li>
+      </ul>
+    </div>
+  </nav>
+  <main class="article">
+    <div class="article-container">
+      <p class="article-eyebrow"><a href="ai-experiments.html">AI Experiments</a> · Part 1 of 2</p>
+      
+    <div class="medium-banner">
+      <span><i class="fa-brands fa-medium"></i> This article is also published on Medium.</span>
+      <a href="https://medium.com/@laxminarayanaboga4079" target="_blank" rel="noopener" class="medium-link">Read it on Medium →</a>
+    </div>
+      <article class="article-content">
+        <h1>Teaching a Decision Model to Play 2048 — and Why the Facts Mattered More Than the Model</h1>
+<blockquote>
+<p>Jev, from TypeSafe AI, is a new kind of model: it never writes text, it only makes judgments. You give it a small state and a typed question, and about 230 ms later it hands back an answer with probabilities. I wanted to know what that is actually good for, so I made it play 2048 in a real browser and measured it against plain-code bots. The surprise wasn&#39;t how smart it was. It was how completely its play depended on the facts I chose to give it.</p>
+</blockquote>
+<p>Most AI demos measure the model. This one ended up measuring the <em>interface</em> — the words between the code and the model — and that turned out to be the more useful lesson.</p>
+<hr>
+<h2>What kind of model is Jev?</h2>
+<p>Jev is what TypeSafe calls a &quot;System One&quot; model: fast, focused judgments instead of generated text. A request has two parts:</p>
+<ul>
+<li><strong>State</strong> — the facts, as a string or a small JSON object.</li>
+<li><strong>Questions</strong> — each with a fixed set of possible answers. A <code>choice</code> picks one of your options, a <code>noul</code> returns the probability of yes, and a <code>score</code> places something on an ordered scale you describe.</li>
+</ul>
+<p>The answers come back typed, with probabilities, so code can consume them directly:</p>
+<pre><code class="language-ts"><span class="hljs-keyword">import</span> { score, <span class="hljs-title class_">TypeSafeClient</span> } <span class="hljs-keyword">from</span> <span class="hljs-string">&quot;@typesafe-ai/sdk&quot;</span>;
+
+<span class="hljs-keyword">const</span> client = <span class="hljs-keyword">new</span> <span class="hljs-title class_">TypeSafeClient</span>();
+<span class="hljs-keyword">const</span> { answers } = <span class="hljs-keyword">await</span> client.<span class="hljs-title function_">systemOne</span>({
+  <span class="hljs-attr">state</span>: { <span class="hljs-attr">moves</span>: { <span class="hljs-attr">up</span>: { <span class="hljs-attr">space</span>: <span class="hljs-string">&quot;some space (6 of 16 cells empty)&quot;</span>, <span class="hljs-attr">biggestTile</span>: <span class="hljs-string">&quot;in a corner&quot;</span> } } },
+  <span class="hljs-attr">questions</span>: {
+    <span class="hljs-attr">up</span>: <span class="hljs-title function_">score</span>(<span class="hljs-string">&quot;How promising is the board after the move described in `moves.up`?&quot;</span>, [
+      <span class="hljs-string">&quot;Close to losing: the board is nearly full, or the biggest tile left its corner.&quot;</span>,
+      <span class="hljs-string">&quot;Poor: little space, and the big tiles are scattered.&quot;</span>,
+      <span class="hljs-string">&quot;Playable: some space, but the big tiles are not well organised.&quot;</span>,
+      <span class="hljs-string">&quot;Good: the biggest tile is in a corner, there is room to move.&quot;</span>,
+      <span class="hljs-string">&quot;Excellent: the biggest tile is in a corner, big tiles in order, plenty of space.&quot;</span>,
+    ]),
+  },
+});
+answers.<span class="hljs-property">up</span>.<span class="hljs-property">score</span>; <span class="hljs-comment">// e.g. 3.19 — a probability-weighted position on the scale</span></code></pre>
+<p>Its own documentation is refreshingly blunt about what it <em>can&#39;t</em> do: it reads literally, it is bad at arithmetic and counting, noisy state lowers accuracy, and it leans towards the first option in a list. That shaped every design decision below.</p>
+<hr>
+<h2>The rule: code does the maths, Jev makes the call</h2>
+<p>Jev can&#39;t see a screen and can&#39;t simulate a 2048 merge. So the split of work was fixed from the start:</p>
+<ol>
+<li><strong>Playwright reads the board.</strong> The original open-source 2048 writes its full state to <code>localStorage</code> on every key press, which is far more reliable than scraping animated tiles from the DOM.</li>
+<li><strong>Pure code simulates all four moves</strong> and drops the illegal ones.</li>
+<li><strong>Code turns each resulting board into a few plain facts</strong> — in words, never raw numbers to work with: <code>&quot;some space (6 of 16 cells empty)&quot;</code>, <code>&quot;pushed out of its corner&quot;</code>, <code>&quot;mostly: three tiles along an edge get smaller away from the biggest tile&quot;</code>.</li>
+<li><strong>One Jev request per turn</strong> asks about every legal move at once (questions in one request run in parallel, so extra questions add almost no latency).</li>
+<li><strong>Code picks the winner</strong> and presses the arrow key.</li>
+</ol>
+<p>I also seeded the game&#39;s random tile generator through Playwright&#39;s <code>addInitScript</code>, so every player faced the same sequence of tiles for a given seed. Without that, ten games per player is mostly noise.</p>
+<p>I tried two ways of asking:</p>
+<ul>
+<li><strong>Variant A</strong> — one <code>score</code> question per legal move (&quot;how promising is the board after <code>moves.up</code>?&quot;), take the highest.</li>
+<li><strong>Variant B</strong> — one <code>choice</code> question across the legal moves, with the option order shuffled every turn to cancel out first-option bias.</li>
+</ul>
+<hr>
+<h2>Baselines keep you honest</h2>
+<p>It&#39;s easy to make any AI player look good by comparing it with nothing. So every Jev variant ran against three plain-code bots on the same ten seeds:</p>
+<ul>
+<li><strong>random</strong> — any legal move. The floor.</li>
+<li><strong>heuristic</strong> — about ten lines that rank moves on <em>the same facts Jev sees</em>, in a fixed order (keep the corner, then space, then order).</li>
+<li><strong>expectimax</strong> — classic game search: try every move, every possible new tile, every reply, and score the boards with a fixed weight grid. No learning, no AI.</li>
+</ul>
+<hr>
+<h2>Round one: Jev equals a hand-written rule</h2>
+<table>
+<thead>
+<tr>
+<th>Player</th>
+<th>Best tile (median / max)</th>
+<th>Games reaching 512</th>
+<th>Mean score</th>
+<th>Cost (10 games)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>random</td>
+<td>128 / 256</td>
+<td>0</td>
+<td>1,258</td>
+<td>–</td>
+</tr>
+<tr>
+<td>heuristic</td>
+<td>256 / 512</td>
+<td>4</td>
+<td>4,819</td>
+<td>–</td>
+</tr>
+<tr>
+<td>Jev A (Score per move)</td>
+<td>256 / 512</td>
+<td>4</td>
+<td>4,707</td>
+<td>$0.24</td>
+</tr>
+<tr>
+<td>Jev B (one Choice)</td>
+<td>256 / 512</td>
+<td>4</td>
+<td>3,971</td>
+<td>$0.09</td>
+</tr>
+<tr>
+<td>expectimax</td>
+<td><strong>2048 / 4096</strong></td>
+<td>10</td>
+<td>33,354</td>
+<td>–</td>
+</tr>
+</tbody></table>
+<p>Jev played <em>sensibly</em> — it kept the biggest tile in its corner, preferred keeping three directions open over grabbing one extra empty cell — but no better than ten lines of <code>if</code>. And expectimax was in another league.</p>
+<p>Two things in this table are lessons in themselves.</p>
+<p><strong>My first heuristic was unfair.</strong> Midway through, I had given Jev two extra facts (merges, and how many directions could move next turn) but never added them to the heuristic. On the same facts, its mean score went from 3,655 to 4,819 and the &quot;Jev advantage&quot; vanished. If your baseline sees less than your model, you&#39;re measuring the information gap, not the model.</p>
+<p><strong>Identical descriptions give noise, not judgment.</strong> In one game I checked, 111 of 267 turns had at least two moves whose descriptions were word-for-word identical — the boards differed, but not in any way my facts captured — and across all games about one turn in five ended with the top two scores within 0.01 of each other. On one board, four identical-looking moves scored 2.42, 2.59, 2.75 and 2.78: a coin toss with decimals. No wording of the question fixes that. Only better facts do.</p>
+<hr>
+<h2>Round two: give it better facts</h2>
+<p>So I made the code do more of the thinking <em>before</em> asking. For each candidate move, code now tries every new tile the game could spawn (a 2 or a 4 in every empty cell) and reports the worst case, in words:</p>
+<ul>
+<li><code>nextTurn</code>: <code>&quot;a new tile could leave only one direction able to move: risky&quot;</code></li>
+<li><code>cornerSafe</code>: <code>&quot;yes: whatever new tile appears, a next move keeps the biggest tile in its corner&quot;</code></li>
+</ul>
+<p>Both the heuristic and Jev got the new facts.</p>
+<table>
+<thead>
+<tr>
+<th>Player</th>
+<th>Best tile (median)</th>
+<th>Games reaching 512</th>
+<th>Mean score</th>
+<th>Cost (10 games)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>heuristic</td>
+<td>256</td>
+<td>3</td>
+<td>4,932</td>
+<td>–</td>
+</tr>
+<tr>
+<td><strong>Jev A</strong></td>
+<td><strong>512</strong></td>
+<td><strong>7</strong></td>
+<td><strong>5,887</strong></td>
+<td>$0.32</td>
+</tr>
+<tr>
+<td>Jev B</td>
+<td>256</td>
+<td>4</td>
+<td>4,741</td>
+<td>$0.12</td>
+</tr>
+</tbody></table>
+<p>This was the first result where Jev added something. The heuristic, ranking facts in a fixed order, barely moved. Jev A, weighing all the facts together, went from 4 to 7 games reaching 512. It&#39;s ten games and nothing reached 1024, so I hold it loosely — but the direction is clear: <strong>once the facts were informative, a model that weighs them beat a rule that ranks them.</strong></p>
+<p>Variant B didn&#39;t improve the same way, even though its individual picks looked reasonable. My untested guess: judging each move on its own against a described scale is easier than comparing four near-identical descriptions in one go. It was also less than half the price (735 vs 1,791 input tokens per request), which matters if you&#39;re making thousands of these calls.</p>
+<hr>
+<h2>So what was expectimax doing that Jev couldn&#39;t?</h2>
+<p>Searching. Expectimax looked two moves ahead over the exact board and averaged over every possible tile. That&#39;s computation — exactly the thing Jev&#39;s own documentation says to keep in code. Jev never had a chance to compete there, and it shouldn&#39;t have to. The fair question was never &quot;is Jev better than search?&quot; but &quot;given what code can tell it, does Jev make a better call than a rule?&quot; — and the answer depended entirely on what code told it.</p>
+<hr>
+<h2>Lessons learned</h2>
+<ul>
+<li><strong>The facts set the ceiling.</strong> With coarse one-move facts, Jev matched a heuristic. With lookahead facts, it beat it. Most of the work in a decision-model integration is choosing and computing the facts.</li>
+<li><strong>Give your baseline the same information.</strong> An unequal baseline silently turns &quot;the model is better&quot; into &quot;the model was told more&quot;.</li>
+<li><strong>Identical inputs can&#39;t be judged apart.</strong> When two options read the same, the model&#39;s preference between them is noise. Fix the description, not the prompt.</li>
+<li><strong>Score per option and Choice across options behave differently.</strong> Here Score was better and Choice was cheaper; test both on your own task.</li>
+<li><strong>Search is code&#39;s job.</strong> If the problem rewards lookahead, compute it and hand the model the conclusion.</li>
+<li><strong>It&#39;s cheap enough to measure properly.</strong> Forty Jev games cost about $0.80 in total, so there&#39;s no excuse for judging on one run.</li>
+</ul>
+<p>The code, the per-turn logs and every number above are in the repo: <a href="https://github.com/laxminarayanaboga/jev-playground">github.com/laxminarayanaboga/jev-playground</a>. Next in this series: the same model against a game where timing is everything — the Chrome dino.</p>
+<hr>
+<p><em>A hands-on learning experiment with TypeSafe&#39;s Jev 1.13, built with Playwright and TypeScript, pair-programmed with Claude Code. Numbers are from ten seeded games per player; your results will vary.</em></p>
+
+      </article>
+      
+    <aside class="author-bio">
+      <div class="author-bio-text">
+        <p class="author-name">Laxminarayana Boga</p>
+        <p class="author-role">Lead Quality Engineer & SDET · 13 years in test automation, cloud-native CI/CD, and AI-first engineering. London, UK.</p>
+        <div class="author-links">
+          <a href="https://medium.com/@laxminarayanaboga4079" target="_blank" rel="noopener">Medium</a>
+          <a href="https://linkedin.com/in/laxminarayana-boga-770b1456" target="_blank" rel="noopener">LinkedIn</a>
+          <a href="https://github.com/laxminarayanaboga" target="_blank" rel="noopener">GitHub</a>
+          <a href="../index.html">Portfolio</a>
+        </div>
+      </div>
+    </aside>
+      
+    <nav class="series-nav" aria-label="Series navigation">
+      <span></span>
+      <a class="series-all" href="ai-experiments.html">All articles</a>
+      <a class="series-next" href="latency-is-a-design-constraint-chrome-dino.html">Latency Is a Design Constraint: A Decision Model Plays the Chrome Dino Game →</a>
+    </nav>
+    </div>
+  </main>
+
+  <footer class="footer" id="contact">
+    <div class="footer-container">
+      <h2>Get in touch</h2>
+      <p>Open to senior engineering roles, consulting, and interesting product conversations.</p>
+      <div class="footer-links">
+        <a href="mailto:laxminarayanaboga4079@gmail.com" title="Email"><i class="fa-solid fa-envelope"></i></a>
+        <a href="https://linkedin.com/in/laxminarayana-boga-770b1456" target="_blank" rel="noopener" title="LinkedIn"><i class="fa-brands fa-linkedin-in"></i></a>
+        <a href="https://github.com/laxminarayanaboga" target="_blank" rel="noopener" title="GitHub"><i class="fa-brands fa-github"></i></a>
+        <a href="https://medium.com/@laxminarayanaboga4079" target="_blank" rel="noopener" title="Medium">
+          <svg viewBox="0 0 24 24" width="1.1em" height="1.1em" fill="currentColor" aria-hidden="true" style="vertical-align:-0.1em;">
+            <path d="M13.54 12a6.8 6.8 0 0 1-6.77 6.82A6.8 6.8 0 0 1 0 12a6.8 6.8 0 0 1 6.77-6.82A6.8 6.8 0 0 1 13.54 12zM20.96 12c0 3.54-1.51 6.42-3.38 6.42-1.87 0-3.39-2.88-3.39-6.42s1.52-6.42 3.39-6.42 3.38 2.88 3.38 6.42M24 12c0 3.17-.53 5.75-1.19 5.75-.66 0-1.19-2.58-1.19-5.75s.53-5.75 1.19-5.75C23.47 6.25 24 8.83 24 12z" />
+          </svg>
+        </a>
+      </div>
+      <p class="footer-copy">© 2026 Laxminarayana Boga</p>
+    </div>
+  </footer>
+
+  <script>
+    window.addEventListener('scroll', () => {
+      document.getElementById('nav').classList.toggle('nav--scrolled', window.scrollY > 20);
+    });
+    const t = document.getElementById('navToggle');
+    if (t) t.addEventListener('click', () =>
+      document.getElementById('navLinks').classList.toggle('nav-links--open'));
+  </script>
+</body>
+</html>

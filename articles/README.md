@@ -22,6 +22,13 @@ A running list of Medium articles derived from this test‑automation repo. All 
 | 10 | Quality Gates Beyond Functional: Lighthouse & K6 | `article-10-lighthouse-k6-quality-gates.md` | budgets as assertions, load thresholds, tag‑driven |
 | 11 | White‑Label / Multi‑Tenant Testing Strategy | `article-11-white-label-multi-tenant-testing.md` | shared journeys, 4‑level fallback, brand as coordinate |
 
+### AI Experiments (`ai-N-<slug>.md`)
+
+| # | Title | File | Focus |
+|---|-------|------|-------|
+| 1 | Teaching a Decision Model to Play 2048 | `ai-1-decision-model-plays-2048.md` | Jev vs heuristic/expectimax, facts set the ceiling, fair baselines |
+| 2 | Latency Is a Design Constraint: Chrome Dino | `ai-2-latency-is-a-design-constraint-chrome-dino.md` | timing jitter vs jump window, decide-what-early, latency tail |
+
 ---
 
 ## Proposed / backlog
