@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="canonical" href="https://laxminarayanaboga.github.io/articles/plain-code-decision-model-coding-agent.html">
+  <title>Plain Code, a Decision Model and a Coding Agent: Who Should Make Which Call?</title>
+</head>
+<body>
+  <article>
+    <p><strong><a href="https://laxminarayanaboga.github.io/articles/ai-experiments.html">AI Experiments</a></strong> · Part 3 of 3</p>
+<h1>Plain Code, a Decision Model and a Coding Agent: Who Should Make Which Call?</h1>
+<blockquote>
+<p>Three lines of <code>if</code> played the Chrome dino game for over an hour and a half and passed 100,000 points, for free. A purpose-built AI decision model needed a redesign just to survive the second cactus. And neither bot would exist without a coding agent that can&#39;t make a single real-time decision itself. After a day of making AI play browser games, the most useful thing I learned wasn&#39;t about any one tool — it was about which kind of &quot;thinking&quot; belongs where.</p>
+</blockquote>
+<p>This is the third article in the series. The <a href="decision-model-plays-2048.html">first</a> put TypeSafe&#39;s Jev decision model on 2048; the <a href="latency-is-a-design-constraint-chrome-dino.html">second</a> put it on the Chrome dino game. This one steps back and compares the three things that did the work: <strong>plain code</strong>, <strong>Jev</strong>, and <strong>Claude Code</strong>, the coding agent I built everything with.</p>
+<hr>
+<h2>Plain code: the dino that wouldn&#39;t die</h2>
+<p>Here is the entire decision logic of the dino baseline:</p>
+<pre><code>if (kind === &quot;high bird&quot;) return &quot;wait&quot;;                                // run under it
+if (kind === &quot;mid bird&quot;) return arrivalMs &lt;= 150 ? &quot;duck&quot; : &quot;wait&quot;;
+return arrivalMs &lt;= 150 ? &quot;jump&quot; : &quot;wait&quot;;                              // cacti, low birds</code></pre>
+<p>Everything else is plumbing, and Playwright does the heavy lifting there:</p>
+<ul>
+<li><strong>An init script catches the game object</strong> as Chrome&#39;s dino registers itself as an event listener — current Chromium no longer exposes it as <code>window.Runner</code>.</li>
+<li><strong><code>page.evaluate</code> reads the live state</strong> — speed, the dino&#39;s position, every obstacle&#39;s type, position and width — about <strong>2,000 times a second</strong>.</li>
+<li><strong>Code turns pixels into milliseconds</strong>: the gap to the next obstacle divided by its speed.</li>
+<li><strong><code>page.keyboard</code> presses Space or holds ArrowDown.</strong></li>
+</ul>
+<p>I started it to calibrate the timing and then just… let it run. It reached the game&#39;s top speed (13 pixels per frame) within a couple of minutes, and from that point the world stops changing: same speed, same physics, same 150 ms rule. Ninety-two minutes later it had passed <strong>107,000 points</strong>, sailed straight through the five-digit score display&#39;s limit (the counter simply grew a sixth digit), and was still going.</p>
+<p>That&#39;s the first lesson, and it&#39;s not about AI at all: <strong>when the rule is known and the world is stable, plain code is unbeatable.</strong> It decides in microseconds, never gets tired, costs nothing, and does exactly the same thing every time. No model call can compete with a comparison and a key press.</p>
+<hr>
+<h2>Jev: fast judgments, if you give it the facts</h2>
+<p>Jev is a different animal. It doesn&#39;t generate text and it doesn&#39;t write code. You send it a small state and a typed question — pick one option, yes-or-no, or a position on a scale — and roughly 230 ms later you get an answer with probabilities. It costs $0.042 per million input tokens; a 26-minute dino run with 2,000 requests cost three and a half cents.</p>
+<p>What it&#39;s good at is <strong>judgment from described facts</strong>. In 2048, when code described each move with lookahead facts (&quot;whatever new tile appears, a next move keeps the biggest tile in its corner&quot;), Jev weighing those facts together beat a hand-written rule that ranked them in a fixed order: 7 of 10 games reached the 512 tile against 3 of 10.</p>
+<p>What it&#39;s not good at is everything its own documentation warns about: arithmetic, counting, geometry — and, as the dino showed, <em>being on the critical path of a tight deadline</em>. Its answers were right 100% of the time, but its latency varied by about 120 ms while the safe jump window was about 90 ms wide. The design that worked asked Jev <em>what</em> to do as soon as an obstacle appeared and let plain code decide <em>when</em>. Even then, one slow answer in two thousand ended a run.</p>
+<p>So Jev sits in a narrow but real slot: <strong>a fuzzy call that a rule would get wrong, that can afford a quarter of a second, and whose facts code can compute.</strong></p>
+<hr>
+<h2>Claude Code: writes the code, never plays the game</h2>
+<p>Claude Code is the opposite again. It wrote every line of both projects — the Playwright page readers, the move simulator, the baselines, the Jev integrations, the run logs and reports — and it read the TypeSafe docs and the installed SDK&#39;s types to do it. But each step takes seconds to minutes. Put it in a game loop and the dino would be dead before the first reply.</p>
+<p>Its value is in the work around the decisions:</p>
+<ul>
+<li><strong>Inspecting the real thing before writing code.</strong> It opened <code>chrome://dino</code> in Playwright, found that <code>window.Runner</code> no longer exists, and worked out the <code>addEventListener</code> hook. For 2048 it found the game&#39;s <code>localStorage</code> state instead of scraping animated tiles.</li>
+<li><strong>Turning a hypothesis into a measured experiment.</strong> Ten seeded games per player, five in parallel, a report that shows where Jev and the heuristic disagree — in minutes, not an evening.</li>
+<li><strong>Reading logs instead of guessing.</strong> Every time something failed, the per-decision JSON log said why.</li>
+</ul>
+<hr>
+<h2>How I actually used Claude Code</h2>
+<p>A few habits made the difference between &quot;it wrote some code&quot; and &quot;it ran a useful experiment&quot;:</p>
+<ol>
+<li><strong>A <code>CLAUDE.md</code> with rules, not wishes.</strong> Mine said: code does all the maths, Jev only gets words; one judgment per question; shuffle option order; every game gets a plain-code baseline; never print the API key; every run has a request cap. It followed them — including pointing out when its own baseline broke the &quot;same information&quot; rule.</li>
+<li><strong>A <code>PLAN.md</code> for the order of work and a <code>STATUS.md</code> updated after every step.</strong> Sessions end and context is summarised; a status file means the next session starts from facts, not memory.</li>
+<li><strong>A skill for the new API.</strong> TypeSafe publishes a Claude Code plugin; installing it meant the code was written against current docs and the SDK&#39;s real types rather than guesses.</li>
+<li><strong>Plan first, small steps, show it running.</strong> &quot;Show me the plan before writing files,&quot; then one piece at a time, each one run and shown.</li>
+<li><strong>Keep it on a short leash with long-running work.</strong> This is where it went wrong for me. Its script quietly restarted the game after the first run crashed at 700, so the only number I saw was 700 — while the second run, which I was watching pass 10,000, was killed without ever being reported. Then it restarted everything with a 60-second cap I&#39;d never asked for. Each time, stopping it and asking &quot;what is going on, what is the plan?&quot; got a clear explanation and a fix — but it&#39;s a reminder that an agent optimising for &quot;finish the task&quot; needs a human watching what it&#39;s measuring.</li>
+</ol>
+<p>It made real bugs too: a race where the game&#39;s first state arrived a frame late, a heuristic that saw less than Jev, an obstacle tracker that lost a cactus. None were the model&#39;s fault, and none were found by reading code — all were found in the logs it had been told to write.</p>
+<hr>
+<h2>Three tools, three jobs</h2>
+<pre><code>               Plain code                         Jev (decision model)                      Claude Code (coding agent)        
+-------------  ---------------------------------  ----------------------------------------  ----------------------------------
+**Does**       runs a known rule                  makes a judgment from described facts     writes, runs and debugs the code  
+**Speed**      microseconds; ~2,000 reads/s here  ~230 ms median, p99 ~470 ms               seconds to minutes per step       
+**Cost here**  free                               under $1 for every experiment combined    a coding-agent session            
+**Great at**   stable rules, timing, maths        fuzzy calls a rule would get wrong        building and measuring things fast
+**Can't**      handle cases you didn't foresee    do maths, write code, hit a 90 ms window  sit inside a real-time loop       </code></pre>
+<p>The pattern that fell out of the experiments is a stack, not a contest:</p>
+<ul>
+<li><strong>Claude Code builds</strong> the system and the experiment around it.</li>
+<li><strong>Plain code runs the loop</strong> — reading state, doing the arithmetic, keeping time.</li>
+<li><strong>Jev is called only where a judgment is genuinely fuzzy</strong>, the facts can be computed, and there&#39;s time to wait for the answer.</li>
+</ul>
+<hr>
+<h2>Lessons learned</h2>
+<ul>
+<li><strong>Start with plain code.</strong> If a few lines of <code>if</code> solve it, they will beat any model on speed, cost and reliability. Here they scored over 100,000.</li>
+<li><strong>Use a decision model for judgments, not rules.</strong> Jev earned its place only when the facts were rich enough that weighing them mattered.</li>
+<li><strong>Keep models off the critical path of tight deadlines.</strong> Ask early, act on time in code, and plan for the slowest answer, not the median.</li>
+<li><strong>Use a coding agent to build and measure, not to decide.</strong> Give it rules in <code>CLAUDE.md</code>, a plan, a status file, and make it log everything.</li>
+<li><strong>Watch what it measures.</strong> An agent can report the wrong number with great confidence; logs and a human glance catch it.</li>
+<li><strong>Always keep a baseline.</strong> Every interesting result in this series came from comparing against something boring.</li>
+</ul>
+<p>Everything — code, logs, numbers — is in <a href="https://github.com/laxminarayanaboga/jev-playground">github.com/laxminarayanaboga/jev-playground</a>.</p>
+<hr>
+<p><em>A hands-on learning experiment with TypeSafe&#39;s Jev 1.13, Playwright and TypeScript, built with Claude Code. The dino baseline was still running when this was written.</em></p>
+
+    <hr>
+    <p><em>Originally published at <a href="https://laxminarayanaboga.github.io/articles/plain-code-decision-model-coding-agent.html">https://laxminarayanaboga.github.io/articles/plain-code-decision-model-coding-agent.html</a></em></p>
+  </article>
+</body>
+</html>

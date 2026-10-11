@@ -28,6 +28,7 @@ A running list of Medium articles derived from this test‑automation repo. All 
 |---|-------|------|-------|
 | 1 | Teaching a Decision Model to Play 2048 | `ai-1-decision-model-plays-2048.md` | Jev vs heuristic/expectimax, facts set the ceiling, fair baselines |
 | 2 | Latency Is a Design Constraint: Chrome Dino | `ai-2-latency-is-a-design-constraint-chrome-dino.md` | timing jitter vs jump window, decide-what-early, latency tail |
+| 3 | Plain Code, a Decision Model and a Coding Agent | `ai-3-plain-code-decision-model-coding-agent.md` | if-bot vs Jev vs Claude Code: which kind of thinking belongs where |
 
 ---
 

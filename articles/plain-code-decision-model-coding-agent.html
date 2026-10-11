@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Three lines of `if` played the Chrome dino game for over an hour and a half and passed 100,000 points, for free. A purpose-built AI decision model needed a redesign just to survive the second cactus. And neither bot would exist without a coding agent that can't make a single real-time decision itself. After a day of making AI play browser games, the most useful thing I learned wasn't about any one tool — it was about which kind of &quot;thinking&quot; belongs where.">
+  <meta property="og:title" content="Plain Code, a Decision Model and a Coding Agent: Who Should Make Which Call? — Laxminarayana Boga">
+  <meta property="og:description" content="Three lines of `if` played the Chrome dino game for over an hour and a half and passed 100,000 points, for free. A purpose-built AI decision model needed a redesign just to survive the second cactus. And neither bot would exist without a coding agent that can't make a single real-time decision itself. After a day of making AI play browser games, the most useful thing I learned wasn't about any one tool — it was about which kind of &quot;thinking&quot; belongs where.">
+  <meta property="og:type" content="article">
+  
+  <title>Plain Code, a Decision Model and a Coding Agent: Who Should Make Which Call? — Laxminarayana Boga</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://kit.fontawesome.com/e8e3708268.js" crossorigin="anonymous"></script>
+  <link rel="stylesheet" href="../style.css">
+  <link rel="stylesheet" href="../articles/assets/article.css">
+</head>
+<body>
+
+  <nav class="nav" id="nav">
+    <div class="nav-container">
+      <a href="../index.html" class="nav-logo">LB</a>
+      <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation">
+        <span></span><span></span><span></span>
+      </button>
+      <ul class="nav-links" id="navLinks">
+        <li><a href="../index.html#about">About</a></li>
+        <li><a href="../index.html#experience">Experience</a></li>
+        <li><a href="../index.html#projects">Projects</a></li>
+        <li><a href="index.html">Writing</a></li>
+        <li><a href="../index.html#contact">Contact</a></li>
+      </ul>
+    </div>
+  </nav>
+  <main class="article">
+    <div class="article-container">
+      <p class="article-eyebrow"><a href="ai-experiments.html">AI Experiments</a> · Part 3 of 3</p>
+      
+    <div class="medium-banner">
+      <span><i class="fa-brands fa-medium"></i> This article is also published on Medium.</span>
+      <a href="https://medium.com/@laxminarayanaboga4079" target="_blank" rel="noopener" class="medium-link">Read it on Medium →</a>
+    </div>
+      <article class="article-content">
+        <h1>Plain Code, a Decision Model and a Coding Agent: Who Should Make Which Call?</h1>
+<blockquote>
+<p>Three lines of <code>if</code> played the Chrome dino game for over an hour and a half and passed 100,000 points, for free. A purpose-built AI decision model needed a redesign just to survive the second cactus. And neither bot would exist without a coding agent that can&#39;t make a single real-time decision itself. After a day of making AI play browser games, the most useful thing I learned wasn&#39;t about any one tool — it was about which kind of &quot;thinking&quot; belongs where.</p>
+</blockquote>
+<p>This is the third article in the series. The <a href="decision-model-plays-2048.html">first</a> put TypeSafe&#39;s Jev decision model on 2048; the <a href="latency-is-a-design-constraint-chrome-dino.html">second</a> put it on the Chrome dino game. This one steps back and compares the three things that did the work: <strong>plain code</strong>, <strong>Jev</strong>, and <strong>Claude Code</strong>, the coding agent I built everything with.</p>
+<hr>
+<h2>Plain code: the dino that wouldn&#39;t die</h2>
+<p>Here is the entire decision logic of the dino baseline:</p>
+<pre><code class="language-ts"><span class="hljs-keyword">if</span> (kind === <span class="hljs-string">&quot;high bird&quot;</span>) <span class="hljs-keyword">return</span> <span class="hljs-string">&quot;wait&quot;</span>;                                <span class="hljs-comment">// run under it</span>
+<span class="hljs-keyword">if</span> (kind === <span class="hljs-string">&quot;mid bird&quot;</span>) <span class="hljs-keyword">return</span> arrivalMs &lt;= <span class="hljs-number">150</span> ? <span class="hljs-string">&quot;duck&quot;</span> : <span class="hljs-string">&quot;wait&quot;</span>;
+<span class="hljs-keyword">return</span> arrivalMs &lt;= <span class="hljs-number">150</span> ? <span class="hljs-string">&quot;jump&quot;</span> : <span class="hljs-string">&quot;wait&quot;</span>;                              <span class="hljs-comment">// cacti, low birds</span></code></pre>
+<p>Everything else is plumbing, and Playwright does the heavy lifting there:</p>
+<ul>
+<li><strong>An init script catches the game object</strong> as Chrome&#39;s dino registers itself as an event listener — current Chromium no longer exposes it as <code>window.Runner</code>.</li>
+<li><strong><code>page.evaluate</code> reads the live state</strong> — speed, the dino&#39;s position, every obstacle&#39;s type, position and width — about <strong>2,000 times a second</strong>.</li>
+<li><strong>Code turns pixels into milliseconds</strong>: the gap to the next obstacle divided by its speed.</li>
+<li><strong><code>page.keyboard</code> presses Space or holds ArrowDown.</strong></li>
+</ul>
+<p>I started it to calibrate the timing and then just… let it run. It reached the game&#39;s top speed (13 pixels per frame) within a couple of minutes, and from that point the world stops changing: same speed, same physics, same 150 ms rule. Ninety-two minutes later it had passed <strong>107,000 points</strong>, sailed straight through the five-digit score display&#39;s limit (the counter simply grew a sixth digit), and was still going.</p>
+<p>That&#39;s the first lesson, and it&#39;s not about AI at all: <strong>when the rule is known and the world is stable, plain code is unbeatable.</strong> It decides in microseconds, never gets tired, costs nothing, and does exactly the same thing every time. No model call can compete with a comparison and a key press.</p>
+<hr>
+<h2>Jev: fast judgments, if you give it the facts</h2>
+<p>Jev is a different animal. It doesn&#39;t generate text and it doesn&#39;t write code. You send it a small state and a typed question — pick one option, yes-or-no, or a position on a scale — and roughly 230 ms later you get an answer with probabilities. It costs $0.042 per million input tokens; a 26-minute dino run with 2,000 requests cost three and a half cents.</p>
+<p>What it&#39;s good at is <strong>judgment from described facts</strong>. In 2048, when code described each move with lookahead facts (&quot;whatever new tile appears, a next move keeps the biggest tile in its corner&quot;), Jev weighing those facts together beat a hand-written rule that ranked them in a fixed order: 7 of 10 games reached the 512 tile against 3 of 10.</p>
+<p>What it&#39;s not good at is everything its own documentation warns about: arithmetic, counting, geometry — and, as the dino showed, <em>being on the critical path of a tight deadline</em>. Its answers were right 100% of the time, but its latency varied by about 120 ms while the safe jump window was about 90 ms wide. The design that worked asked Jev <em>what</em> to do as soon as an obstacle appeared and let plain code decide <em>when</em>. Even then, one slow answer in two thousand ended a run.</p>
+<p>So Jev sits in a narrow but real slot: <strong>a fuzzy call that a rule would get wrong, that can afford a quarter of a second, and whose facts code can compute.</strong></p>
+<hr>
+<h2>Claude Code: writes the code, never plays the game</h2>
+<p>Claude Code is the opposite again. It wrote every line of both projects — the Playwright page readers, the move simulator, the baselines, the Jev integrations, the run logs and reports — and it read the TypeSafe docs and the installed SDK&#39;s types to do it. But each step takes seconds to minutes. Put it in a game loop and the dino would be dead before the first reply.</p>
+<p>Its value is in the work around the decisions:</p>
+<ul>
+<li><strong>Inspecting the real thing before writing code.</strong> It opened <code>chrome://dino</code> in Playwright, found that <code>window.Runner</code> no longer exists, and worked out the <code>addEventListener</code> hook. For 2048 it found the game&#39;s <code>localStorage</code> state instead of scraping animated tiles.</li>
+<li><strong>Turning a hypothesis into a measured experiment.</strong> Ten seeded games per player, five in parallel, a report that shows where Jev and the heuristic disagree — in minutes, not an evening.</li>
+<li><strong>Reading logs instead of guessing.</strong> Every time something failed, the per-decision JSON log said why.</li>
+</ul>
+<hr>
+<h2>How I actually used Claude Code</h2>
+<p>A few habits made the difference between &quot;it wrote some code&quot; and &quot;it ran a useful experiment&quot;:</p>
+<ol>
+<li><strong>A <code>CLAUDE.md</code> with rules, not wishes.</strong> Mine said: code does all the maths, Jev only gets words; one judgment per question; shuffle option order; every game gets a plain-code baseline; never print the API key; every run has a request cap. It followed them — including pointing out when its own baseline broke the &quot;same information&quot; rule.</li>
+<li><strong>A <code>PLAN.md</code> for the order of work and a <code>STATUS.md</code> updated after every step.</strong> Sessions end and context is summarised; a status file means the next session starts from facts, not memory.</li>
+<li><strong>A skill for the new API.</strong> TypeSafe publishes a Claude Code plugin; installing it meant the code was written against current docs and the SDK&#39;s real types rather than guesses.</li>
+<li><strong>Plan first, small steps, show it running.</strong> &quot;Show me the plan before writing files,&quot; then one piece at a time, each one run and shown.</li>
+<li><strong>Keep it on a short leash with long-running work.</strong> This is where it went wrong for me. Its script quietly restarted the game after the first run crashed at 700, so the only number I saw was 700 — while the second run, which I was watching pass 10,000, was killed without ever being reported. Then it restarted everything with a 60-second cap I&#39;d never asked for. Each time, stopping it and asking &quot;what is going on, what is the plan?&quot; got a clear explanation and a fix — but it&#39;s a reminder that an agent optimising for &quot;finish the task&quot; needs a human watching what it&#39;s measuring.</li>
+</ol>
+<p>It made real bugs too: a race where the game&#39;s first state arrived a frame late, a heuristic that saw less than Jev, an obstacle tracker that lost a cactus. None were the model&#39;s fault, and none were found by reading code — all were found in the logs it had been told to write.</p>
+<hr>
+<h2>Three tools, three jobs</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Plain code</th>
+<th>Jev (decision model)</th>
+<th>Claude Code (coding agent)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Does</strong></td>
+<td>runs a known rule</td>
+<td>makes a judgment from described facts</td>
+<td>writes, runs and debugs the code</td>
+</tr>
+<tr>
+<td><strong>Speed</strong></td>
+<td>microseconds; ~2,000 reads/s here</td>
+<td>~230 ms median, p99 ~470 ms</td>
+<td>seconds to minutes per step</td>
+</tr>
+<tr>
+<td><strong>Cost here</strong></td>
+<td>free</td>
+<td>under $1 for every experiment combined</td>
+<td>a coding-agent session</td>
+</tr>
+<tr>
+<td><strong>Great at</strong></td>
+<td>stable rules, timing, maths</td>
+<td>fuzzy calls a rule would get wrong</td>
+<td>building and measuring things fast</td>
+</tr>
+<tr>
+<td><strong>Can&#39;t</strong></td>
+<td>handle cases you didn&#39;t foresee</td>
+<td>do maths, write code, hit a 90 ms window</td>
+<td>sit inside a real-time loop</td>
+</tr>
+</tbody></table>
+<p>The pattern that fell out of the experiments is a stack, not a contest:</p>
+<ul>
+<li><strong>Claude Code builds</strong> the system and the experiment around it.</li>
+<li><strong>Plain code runs the loop</strong> — reading state, doing the arithmetic, keeping time.</li>
+<li><strong>Jev is called only where a judgment is genuinely fuzzy</strong>, the facts can be computed, and there&#39;s time to wait for the answer.</li>
+</ul>
+<hr>
+<h2>Lessons learned</h2>
+<ul>
+<li><strong>Start with plain code.</strong> If a few lines of <code>if</code> solve it, they will beat any model on speed, cost and reliability. Here they scored over 100,000.</li>
+<li><strong>Use a decision model for judgments, not rules.</strong> Jev earned its place only when the facts were rich enough that weighing them mattered.</li>
+<li><strong>Keep models off the critical path of tight deadlines.</strong> Ask early, act on time in code, and plan for the slowest answer, not the median.</li>
+<li><strong>Use a coding agent to build and measure, not to decide.</strong> Give it rules in <code>CLAUDE.md</code>, a plan, a status file, and make it log everything.</li>
+<li><strong>Watch what it measures.</strong> An agent can report the wrong number with great confidence; logs and a human glance catch it.</li>
+<li><strong>Always keep a baseline.</strong> Every interesting result in this series came from comparing against something boring.</li>
+</ul>
+<p>Everything — code, logs, numbers — is in <a href="https://github.com/laxminarayanaboga/jev-playground">github.com/laxminarayanaboga/jev-playground</a>.</p>
+<hr>
+<p><em>A hands-on learning experiment with TypeSafe&#39;s Jev 1.13, Playwright and TypeScript, built with Claude Code. The dino baseline was still running when this was written.</em></p>
+
+      </article>
+      
+    <aside class="author-bio">
+      <div class="author-bio-text">
+        <p class="author-name">Laxminarayana Boga</p>
+        <p class="author-role">Lead Quality Engineer & SDET · 13 years in test automation, cloud-native CI/CD, and AI-first engineering. London, UK.</p>
+        <div class="author-links">
+          <a href="https://medium.com/@laxminarayanaboga4079" target="_blank" rel="noopener">Medium</a>
+          <a href="https://linkedin.com/in/laxminarayana-boga-770b1456" target="_blank" rel="noopener">LinkedIn</a>
+          <a href="https://github.com/laxminarayanaboga" target="_blank" rel="noopener">GitHub</a>
+          <a href="../index.html">Portfolio</a>
+        </div>
+      </div>
+    </aside>
+      
+    <nav class="series-nav" aria-label="Series navigation">
+      <a class="series-prev" href="latency-is-a-design-constraint-chrome-dino.html">← Latency Is a Design Constraint: A Decision Model Plays the Chrome Dino Game</a>
+      <a class="series-all" href="ai-experiments.html">All articles</a>
+      <span></span>
+    </nav>
+    </div>
+  </main>
+
+  <footer class="footer" id="contact">
+    <div class="footer-container">
+      <h2>Get in touch</h2>
+      <p>Open to senior engineering roles, consulting, and interesting product conversations.</p>
+      <div class="footer-links">
+        <a href="mailto:laxminarayanaboga4079@gmail.com" title="Email"><i class="fa-solid fa-envelope"></i></a>
+        <a href="https://linkedin.com/in/laxminarayana-boga-770b1456" target="_blank" rel="noopener" title="LinkedIn"><i class="fa-brands fa-linkedin-in"></i></a>
+        <a href="https://github.com/laxminarayanaboga" target="_blank" rel="noopener" title="GitHub"><i class="fa-brands fa-github"></i></a>
+        <a href="https://medium.com/@laxminarayanaboga4079" target="_blank" rel="noopener" title="Medium">
+          <svg viewBox="0 0 24 24" width="1.1em" height="1.1em" fill="currentColor" aria-hidden="true" style="vertical-align:-0.1em;">
+            <path d="M13.54 12a6.8 6.8 0 0 1-6.77 6.82A6.8 6.8 0 0 1 0 12a6.8 6.8 0 0 1 6.77-6.82A6.8 6.8 0 0 1 13.54 12zM20.96 12c0 3.54-1.51 6.42-3.38 6.42-1.87 0-3.39-2.88-3.39-6.42s1.52-6.42 3.39-6.42 3.38 2.88 3.38 6.42M24 12c0 3.17-.53 5.75-1.19 5.75-.66 0-1.19-2.58-1.19-5.75s.53-5.75 1.19-5.75C23.47 6.25 24 8.83 24 12z" />
+          </svg>
+        </a>
+      </div>
+      <p class="footer-copy">© 2026 Laxminarayana Boga</p>
+    </div>
+  </footer>
+
+  <script>
+    window.addEventListener('scroll', () => {
+      document.getElementById('nav').classList.toggle('nav--scrolled', window.scrollY > 20);
+    });
+    const t = document.getElementById('navToggle');
+    if (t) t.addEventListener('click', () =>
+      document.getElementById('navLinks').classList.toggle('nav-links--open'));
+  </script>
+</body>
+</html>
