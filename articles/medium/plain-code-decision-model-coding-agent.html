@@ -11,7 +11,7 @@
     <p><strong><a href="https://laxminarayanaboga.github.io/articles/ai-experiments.html">AI Experiments</a></strong> · Part 3 of 3</p>
 <h1>Plain Code, a Decision Model and a Coding Agent: Who Should Make Which Call?</h1>
 <blockquote>
-<p>Three lines of <code>if</code> played the Chrome dino game for over an hour and a half and passed 100,000 points, for free. A purpose-built AI decision model needed a redesign just to survive the second cactus. And neither bot would exist without a coding agent that can&#39;t make a single real-time decision itself. After a day of making AI play browser games, the most useful thing I learned wasn&#39;t about any one tool — it was about which kind of &quot;thinking&quot; belongs where.</p>
+<p>Three lines of <code>if</code> played the Chrome dino game for two hours and twenty-five minutes and scored 169,369, for free. A purpose-built AI decision model needed a redesign just to survive the second cactus. And neither bot would exist without a coding agent that can&#39;t make a single real-time decision itself. After a day of making AI play browser games, the most useful thing I learned wasn&#39;t about any one tool — it was about which kind of &quot;thinking&quot; belongs where.</p>
 </blockquote>
 <p>This is the third article in the series. The <a href="decision-model-plays-2048.html">first</a> put TypeSafe&#39;s Jev decision model on 2048; the <a href="latency-is-a-design-constraint-chrome-dino.html">second</a> put it on the Chrome dino game. This one steps back and compares the three things that did the work: <strong>plain code</strong>, <strong>Jev</strong>, and <strong>Claude Code</strong>, the coding agent I built everything with.</p>
 <hr>
@@ -27,7 +27,7 @@ return arrivalMs &lt;= 150 ? &quot;jump&quot; : &quot;wait&quot;;               
 <li><strong>Code turns pixels into milliseconds</strong>: the gap to the next obstacle divided by its speed.</li>
 <li><strong><code>page.keyboard</code> presses Space or holds ArrowDown.</strong></li>
 </ul>
-<p>I started it to calibrate the timing and then just… let it run. It reached the game&#39;s top speed (13 pixels per frame) within a couple of minutes, and from that point the world stops changing: same speed, same physics, same 150 ms rule. Ninety-two minutes later it had passed <strong>107,000 points</strong>, sailed straight through the five-digit score display&#39;s limit (the counter simply grew a sixth digit), and was still going.</p>
+<p>I started it to calibrate the timing and then just… let it run. It reached the game&#39;s top speed (13 pixels per frame) within a couple of minutes, and from that point the world stops changing: same speed, same physics, same 150 ms rule. It sailed straight through the five-digit score display&#39;s limit (the counter simply grew a sixth digit) and finally hit a large cactus after <strong>2 hours 25 minutes and 169,369 points</strong> — having read the game&#39;s state about 24 million times.</p>
 <p>That&#39;s the first lesson, and it&#39;s not about AI at all: <strong>when the rule is known and the world is stable, plain code is unbeatable.</strong> It decides in microseconds, never gets tired, costs nothing, and does exactly the same thing every time. No model call can compete with a comparison and a key press.</p>
 <hr>
 <h2>Jev: fast judgments, if you give it the facts</h2>
@@ -73,7 +73,7 @@ return arrivalMs &lt;= 150 ? &quot;jump&quot; : &quot;wait&quot;;               
 <hr>
 <h2>Lessons learned</h2>
 <ul>
-<li><strong>Start with plain code.</strong> If a few lines of <code>if</code> solve it, they will beat any model on speed, cost and reliability. Here they scored over 100,000.</li>
+<li><strong>Start with plain code.</strong> If a few lines of <code>if</code> solve it, they will beat any model on speed, cost and reliability. Here they scored 169,369.</li>
 <li><strong>Use a decision model for judgments, not rules.</strong> Jev earned its place only when the facts were rich enough that weighing them mattered.</li>
 <li><strong>Keep models off the critical path of tight deadlines.</strong> Ask early, act on time in code, and plan for the slowest answer, not the median.</li>
 <li><strong>Use a coding agent to build and measure, not to decide.</strong> Give it rules in <code>CLAUDE.md</code>, a plan, a status file, and make it log everything.</li>
@@ -82,7 +82,7 @@ return arrivalMs &lt;= 150 ? &quot;jump&quot; : &quot;wait&quot;;               
 </ul>
 <p>Everything — code, logs, numbers — is in <a href="https://github.com/laxminarayanaboga/jev-playground">github.com/laxminarayanaboga/jev-playground</a>.</p>
 <hr>
-<p><em>A hands-on learning experiment with TypeSafe&#39;s Jev 1.13, Playwright and TypeScript, built with Claude Code. The dino baseline was still running when this was written.</em></p>
+<p><em>A hands-on learning experiment with TypeSafe&#39;s Jev 1.13, Playwright and TypeScript, built with Claude Code.</em></p>
 
     <hr>
     <p><em>Originally published at <a href="https://laxminarayanaboga.github.io/articles/plain-code-decision-model-coding-agent.html">https://laxminarayanaboga.github.io/articles/plain-code-decision-model-coding-agent.html</a></em></p>

@@ -33,7 +33,7 @@
 <pre><code>if (kind === &quot;high bird&quot;) return &quot;wait&quot;;                  // run under it
 if (kind === &quot;mid bird&quot;) return arrivalMs &lt;= 150 ? &quot;duck&quot; : &quot;wait&quot;;
 return arrivalMs &lt;= 150 ? &quot;jump&quot; : &quot;wait&quot;;                // cacti and low birds</code></pre>
-<p>That&#39;s the whole bot. It&#39;s frighteningly good: once the game reaches its top speed, nothing changes, so the same 150 ms rule just keeps working. One run went past <strong>97,000 points in 83 minutes</strong> and was still going when I wrote this.</p>
+<p>That&#39;s the whole bot. It&#39;s frighteningly good: once the game reaches its top speed, nothing changes, so the same 150 ms rule just keeps working. One run lasted <strong>2 hours 25 minutes and scored 169,369</strong> before a large cactus finally got it.</p>
 <hr>
 <h2>Design one: let the model decide <em>now</em></h2>
 <p>The plan for the model was the obvious one. Code computes the time until the obstacle arrives, subtracts the model&#39;s expected latency, and turns the result into a word — <code>far</code>, <code>approaching</code>, <code>in the window</code>, <code>past the window</code>. The model sees the obstacle and that word, and picks jump, duck or wait. Because one request at a time (~230 ms each) is too coarse for a jump window, code fires a fresh request every 40 ms while an obstacle is close, and acts on the newest answer.</p>

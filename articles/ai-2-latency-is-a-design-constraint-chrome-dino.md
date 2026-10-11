@@ -38,7 +38,7 @@ if (kind === "mid bird") return arrivalMs <= 150 ? "duck" : "wait";
 return arrivalMs <= 150 ? "jump" : "wait";                // cacti and low birds
 ```
 
-That's the whole bot. It's frighteningly good: once the game reaches its top speed, nothing changes, so the same 150 ms rule just keeps working. One run went past **97,000 points in 83 minutes** and was still going when I wrote this.
+That's the whole bot. It's frighteningly good: once the game reaches its top speed, nothing changes, so the same 150 ms rule just keeps working. One run lasted **2 hours 25 minutes and scored 169,369** before a large cactus finally got it.
 
 ---
 

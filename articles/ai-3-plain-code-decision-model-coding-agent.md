@@ -1,6 +1,6 @@
 # Plain Code, a Decision Model and a Coding Agent: Who Should Make Which Call?
 
-> Three lines of `if` played the Chrome dino game for over an hour and a half and passed 100,000 points, for free. A purpose-built AI decision model needed a redesign just to survive the second cactus. And neither bot would exist without a coding agent that can't make a single real-time decision itself. After a day of making AI play browser games, the most useful thing I learned wasn't about any one tool — it was about which kind of "thinking" belongs where.
+> Three lines of `if` played the Chrome dino game for two hours and twenty-five minutes and scored 169,369, for free. A purpose-built AI decision model needed a redesign just to survive the second cactus. And neither bot would exist without a coding agent that can't make a single real-time decision itself. After a day of making AI play browser games, the most useful thing I learned wasn't about any one tool — it was about which kind of "thinking" belongs where.
 
 This is the third article in the series. The [first](decision-model-plays-2048.html) put TypeSafe's Jev decision model on 2048; the [second](latency-is-a-design-constraint-chrome-dino.html) put it on the Chrome dino game. This one steps back and compares the three things that did the work: **plain code**, **Jev**, and **Claude Code**, the coding agent I built everything with.
 
@@ -23,7 +23,7 @@ Everything else is plumbing, and Playwright does the heavy lifting there:
 - **Code turns pixels into milliseconds**: the gap to the next obstacle divided by its speed.
 - **`page.keyboard` presses Space or holds ArrowDown.**
 
-I started it to calibrate the timing and then just… let it run. It reached the game's top speed (13 pixels per frame) within a couple of minutes, and from that point the world stops changing: same speed, same physics, same 150 ms rule. Ninety-two minutes later it had passed **107,000 points**, sailed straight through the five-digit score display's limit (the counter simply grew a sixth digit), and was still going.
+I started it to calibrate the timing and then just… let it run. It reached the game's top speed (13 pixels per frame) within a couple of minutes, and from that point the world stops changing: same speed, same physics, same 150 ms rule. It sailed straight through the five-digit score display's limit (the counter simply grew a sixth digit) and finally hit a large cactus after **2 hours 25 minutes and 169,369 points** — having read the game's state about 24 million times.
 
 That's the first lesson, and it's not about AI at all: **when the rule is known and the world is stable, plain code is unbeatable.** It decides in microseconds, never gets tired, costs nothing, and does exactly the same thing every time. No model call can compete with a comparison and a key press.
 
@@ -87,7 +87,7 @@ The pattern that fell out of the experiments is a stack, not a contest:
 
 ## Lessons learned
 
-- **Start with plain code.** If a few lines of `if` solve it, they will beat any model on speed, cost and reliability. Here they scored over 100,000.
+- **Start with plain code.** If a few lines of `if` solve it, they will beat any model on speed, cost and reliability. Here they scored 169,369.
 - **Use a decision model for judgments, not rules.** Jev earned its place only when the facts were rich enough that weighing them mattered.
 - **Keep models off the critical path of tight deadlines.** Ask early, act on time in code, and plan for the slowest answer, not the median.
 - **Use a coding agent to build and measure, not to decide.** Give it rules in `CLAUDE.md`, a plan, a status file, and make it log everything.
@@ -98,4 +98,4 @@ Everything — code, logs, numbers — is in [github.com/laxminarayanaboga/jev-p
 
 ---
 
-*A hands-on learning experiment with TypeSafe's Jev 1.13, Playwright and TypeScript, built with Claude Code. The dino baseline was still running when this was written.*
+*A hands-on learning experiment with TypeSafe's Jev 1.13, Playwright and TypeScript, built with Claude Code.*
