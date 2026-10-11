@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Hands-on experiments with new AI models, built with Playwright and TypeScript and measured honestly against plain-code baselines — what the model is actually good at, where it breaks, and what it costs.">
+  <meta property="og:title" content="AI Experiments — Laxminarayana Boga">
+  <meta property="og:description" content="Hands-on experiments with new AI models, built with Playwright and TypeScript and measured honestly against plain-code baselines — what the model is actually good at, where it breaks, and what it costs.">
+  <meta property="og:type" content="article">
+  
+  <title>AI Experiments — Laxminarayana Boga</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://kit.fontawesome.com/e8e3708268.js" crossorigin="anonymous"></script>
+  <link rel="stylesheet" href="../style.css">
+  <link rel="stylesheet" href="../articles/assets/article.css">
+</head>
+<body>
+
+  <nav class="nav" id="nav">
+    <div class="nav-container">
+      <a href="../index.html" class="nav-logo">LB</a>
+      <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation">
+        <span></span><span></span><span></span>
+      </button>
+      <ul class="nav-links" id="navLinks">
+        <li><a href="../index.html#about">About</a></li>
+        <li><a href="../index.html#experience">Experience</a></li>
+        <li><a href="../index.html#projects">Projects</a></li>
+        <li><a href="index.html">Writing</a></li>
+        <li><a href="../index.html#contact">Contact</a></li>
+      </ul>
+    </div>
+  </nav>
+  <header class="writing-hero">
+    <div class="section-container">
+      <p class="section-title"><a href="index.html">← Writing</a></p>
+      <h1 class="writing-title">AI Experiments</h1>
+      <p class="writing-intro">Hands-on experiments with new AI models, built with Playwright and TypeScript and measured honestly against plain-code baselines — what the model is actually good at, where it breaks, and what it costs.</p>
+      <p class="writing-intro">
+        Each article is also published on
+        <a href="https://medium.com/@laxminarayanaboga4079" target="_blank" rel="noopener">Medium</a>.
+      </p>
+    </div>
+  </header>
+  <main class="writing-list">
+    <div class="section-container">
+      <div class="article-cards">
+
+        <a class="article-card" href="decision-model-plays-2048.html">
+          <span class="article-card-num">01</span>
+          <span class="article-card-body">
+            <span class="article-card-title">Teaching a Decision Model to Play 2048 — and Why the Facts Mattered More Than the Model</span>
+            <span class="article-card-blurb">Jev, from TypeSafe AI, is a new kind of model: it never writes text, it only makes judgments. You give it a small state and a typed question, and about 230 ms later it hands back an answer with probabilities. I wanted to know what that is actually good for, so I made it play 2048 in a real browser and measured it against plain-code bots. The surprise wasn't how smart it was. It was how completely its play depended on the facts I chose to give it.</span>
+            <span class="article-card-cta">Read article →</span>
+          </span>
+        </a>
+
+        <a class="article-card" href="latency-is-a-design-constraint-chrome-dino.html">
+          <span class="article-card-num">02</span>
+          <span class="article-card-body">
+            <span class="article-card-title">Latency Is a Design Constraint: A Decision Model Plays the Chrome Dino Game</span>
+            <span class="article-card-blurb">After 2048, I gave the same AI decision model a game where timing is everything: the dinosaur that runs across Chrome when you're offline. The first design asked it &quot;jump now?&quot; — and the dino died on the second cactus every time, even though the model's answers were 100% correct. The fix wasn't a better prompt. It was asking a different question at a different moment, and letting code own the clock.</span>
+            <span class="article-card-cta">Read article →</span>
+          </span>
+        </a>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer" id="contact">
+    <div class="footer-container">
+      <h2>Get in touch</h2>
+      <p>Open to senior engineering roles, consulting, and interesting product conversations.</p>
+      <div class="footer-links">
+        <a href="mailto:laxminarayanaboga4079@gmail.com" title="Email"><i class="fa-solid fa-envelope"></i></a>
+        <a href="https://linkedin.com/in/laxminarayana-boga-770b1456" target="_blank" rel="noopener" title="LinkedIn"><i class="fa-brands fa-linkedin-in"></i></a>
+        <a href="https://github.com/laxminarayanaboga" target="_blank" rel="noopener" title="GitHub"><i class="fa-brands fa-github"></i></a>
+        <a href="https://medium.com/@laxminarayanaboga4079" target="_blank" rel="noopener" title="Medium">
+          <svg viewBox="0 0 24 24" width="1.1em" height="1.1em" fill="currentColor" aria-hidden="true" style="vertical-align:-0.1em;">
+            <path d="M13.54 12a6.8 6.8 0 0 1-6.77 6.82A6.8 6.8 0 0 1 0 12a6.8 6.8 0 0 1 6.77-6.82A6.8 6.8 0 0 1 13.54 12zM20.96 12c0 3.54-1.51 6.42-3.38 6.42-1.87 0-3.39-2.88-3.39-6.42s1.52-6.42 3.39-6.42 3.38 2.88 3.38 6.42M24 12c0 3.17-.53 5.75-1.19 5.75-.66 0-1.19-2.58-1.19-5.75s.53-5.75 1.19-5.75C23.47 6.25 24 8.83 24 12z" />
+          </svg>
+        </a>
+      </div>
+      <p class="footer-copy">© 2026 Laxminarayana Boga</p>
+    </div>
+  </footer>
+
+  <script>
+    window.addEventListener('scroll', () => {
+      document.getElementById('nav').classList.toggle('nav--scrolled', window.scrollY > 20);
+    });
+    const t = document.getElementById('navToggle');
+    if (t) t.addEventListener('click', () =>
+      document.getElementById('navLinks').classList.toggle('nav-links--open'));
+  </script>
+</body>
+</html>
